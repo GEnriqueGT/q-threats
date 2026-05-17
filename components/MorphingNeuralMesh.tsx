@@ -3,13 +3,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { createNeuralMeshGeometry, easeInOutCubic } from '@/lib/neuralMeshGeometry';
-import {
-  BridgeMeshSimulator,
-  buildSplitToBridges,
-  createBridgeAnalysisData,
-} from '@/lib/bridgeMesh';
-import type { ConnectorEdge } from '@/lib/neuralConnectors';
+import { createNeuralMeshGeometry, createFlatDiscMesh, easeInOutCubic } from '@/lib/neuralMeshGeometry';
 import { SPHERE_POINT_COUNT, SPHERE_RADIUS } from '@/lib/neuralConstants';
 import { getNeuralPointTexture } from '@/lib/neuralPointTexture';
 
@@ -56,24 +50,10 @@ function screenToWorld(
   return camera.position.clone().add(_dir.multiplyScalar(dist));
 }
 
-function lerp3(
-  out: Float32Array,
-  a: Float32Array,
-  b: Float32Array,
-  t: number,
-  count: number,
-) {
-  for (let i = 0; i < count * 3; i++) {
-    out[i] = a[i] + (b[i] - a[i]) * t;
-  }
-}
-
 export function MorphingNeuralMesh({
   phase,
   size,
-  anchors,
   sphereFocus,
-  connectorEdges = [],
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -84,28 +64,20 @@ export function MorphingNeuralMesh({
     [],
   );
 
-  const analysisMesh = useMemo(
-    () => createBridgeAnalysisData(Math.max(connectorEdges.length, 1)),
-    [connectorEdges.length],
+  const flatDiscMesh = useMemo(
+    () => createFlatDiscMesh(3.2, 320, 3, 0.26),
+    [],
   );
 
-  const bridgeSim = useRef<BridgeMeshSimulator | null>(null);
-  const simReady = useRef(false);
-
-  useEffect(() => {
-    bridgeSim.current = new BridgeMeshSimulator(analysisMesh);
-    simReady.current = false;
-  }, [analysisMesh]);
-
   const isDashboard = phase === 'idle-left' || phase === 'transit';
-  const pointCount = isDashboard ? dashboardMesh.pointCount : analysisMesh.pointCount;
+  const pointCount = isDashboard ? dashboardMesh.pointCount : flatDiscMesh.pointCount;
 
   const positions = useMemo(() => {
     const buf = new Float32Array(
-      isDashboard ? dashboardMesh.spherePositions : analysisMesh.sphereLayout,
+      isDashboard ? dashboardMesh.spherePositions : flatDiscMesh.spherePositions,
     );
     return buf;
-  }, [isDashboard, dashboardMesh, analysisMesh]);
+  }, [isDashboard, dashboardMesh, flatDiscMesh]);
 
   const linePositions = useMemo(() => new Float32Array(positions), [positions]);
 
@@ -115,18 +87,11 @@ export function MorphingNeuralMesh({
   const linesGeoRef = useRef<THREE.BufferGeometry>(null);
   const phaseStart = useRef(performance.now());
   const prevPhase = useRef<MeshPhase>(phase);
-  const splitScratch = useRef<Float32Array | null>(null);
-  const stretchedScratch = useRef<Float32Array | null>(null);
 
   useEffect(() => {
     if (prevPhase.current !== phase) {
       phaseStart.current = performance.now();
       prevPhase.current = phase;
-      if (phase === 'split' || phase === 'gather') {
-        splitScratch.current = null;
-        stretchedScratch.current = null;
-        simReady.current = false;
-      }
       if (phase === 'idle-left' || phase === 'transit') {
         positions.set(dashboardMesh.spherePositions);
         linePositions.set(dashboardMesh.spherePositions);
@@ -134,13 +99,10 @@ export function MorphingNeuralMesh({
     }
   }, [phase, dashboardMesh, positions, linePositions]);
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const w = size.w || 1000;
     const h = size.h || 600;
     const elapsed = performance.now() - phaseStart.current;
-
-    const project = (x: number, y: number) => screenToWorld(x, y, w, h, camera);
-    const screenAnchors = anchors.map((a) => ({ id: a.id, x: a.x, y: a.y }));
 
     let lineIndices: Uint16Array = dashboardMesh.lineIndices;
 
@@ -148,64 +110,43 @@ export function MorphingNeuralMesh({
       positions.set(dashboardMesh.spherePositions);
       lineIndices = dashboardMesh.lineIndices;
     } else {
-      lineIndices = analysisMesh.lineIndices;
-      const sim = bridgeSim.current;
+      // Modo analisis: usar disco plano con red neural
+      lineIndices = flatDiscMesh.lineIndices;
 
       if (phase === 'split') {
+        // Transicion de esfera a disco
         const posT = easeInOutCubic(Math.min(1, elapsed / MESH_SPLIT_MS));
-        if (!splitScratch.current) {
-          splitScratch.current = new Float32Array(analysisMesh.pointCount * 3);
+        for (let i = 0; i < flatDiscMesh.pointCount; i++) {
+          const sphereIdx = i % dashboardMesh.pointCount;
+          const sx = dashboardMesh.spherePositions[sphereIdx * 3];
+          const sy = dashboardMesh.spherePositions[sphereIdx * 3 + 1];
+          const sz = dashboardMesh.spherePositions[sphereIdx * 3 + 2];
+          
+          const dx = flatDiscMesh.spherePositions[i * 3];
+          const dy = flatDiscMesh.spherePositions[i * 3 + 1];
+          const dz = flatDiscMesh.spherePositions[i * 3 + 2];
+          
+          positions[i * 3] = sx + (dx - sx) * posT;
+          positions[i * 3 + 1] = sy + (dy - sy) * posT;
+          positions[i * 3 + 2] = sz + (dz - sz) * posT;
         }
-        buildSplitToBridges(
-          analysisMesh,
-          posT,
-          screenAnchors,
-          connectorEdges,
-          project,
-          splitScratch.current,
-        );
-        positions.set(splitScratch.current);
-      } else if (phase === 'gather') {
-        const posT = easeInOutCubic(Math.min(1, elapsed / MESH_GATHER_MS));
-        if (!splitScratch.current) {
-          splitScratch.current = new Float32Array(analysisMesh.pointCount * 3);
-          buildSplitToBridges(
-            analysisMesh,
-            1,
-            screenAnchors,
-            connectorEdges,
-            project,
-            splitScratch.current,
-          );
-        }
-        if (!stretchedScratch.current) {
-          stretchedScratch.current = new Float32Array(analysisMesh.pointCount * 3);
-        }
-        if (sim) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          stretchedScratch.current.set(sim.positions);
-        }
-        lerp3(
-          positions,
-          splitScratch.current,
-          stretchedScratch.current,
-          posT,
-          analysisMesh.pointCount,
-        );
-        if (posT > 0.92 && sim && !simReady.current) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          simReady.current = true;
-        }
-      } else if (phase === 'ready' && sim) {
-        if (!simReady.current) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          simReady.current = true;
-        }
-        sim.step(screenAnchors, connectorEdges, project, delta, true);
-        positions.set(sim.positions);
-        const breathe = Math.sin(performance.now() * 0.0007) * 0.004;
-        for (let i = 0; i < analysisMesh.pointCount; i++) {
-          positions[i * 3 + 2] += breathe * ((i % 5) - 2);
+      } else if (phase === 'gather' || phase === 'ready') {
+        // Disco establecido con efecto de flotacion
+        const time = performance.now() * 0.001;
+        
+        for (let i = 0; i < flatDiscMesh.pointCount; i++) {
+          const baseX = flatDiscMesh.spherePositions[i * 3];
+          const baseY = flatDiscMesh.spherePositions[i * 3 + 1];
+          const baseZ = flatDiscMesh.spherePositions[i * 3 + 2];
+          
+          // Efecto de onda en el disco (flotacion)
+          const dist = Math.sqrt(baseX * baseX + baseY * baseY);
+          const wave = Math.sin(time * 1.5 + dist * 1.2) * 0.06;
+          const wave2 = Math.cos(time * 0.8 + i * 0.05) * 0.03;
+          
+          positions[i * 3] = baseX + Math.sin(time * 0.5 + i * 0.1) * 0.015;
+          positions[i * 3 + 1] = baseY + Math.cos(time * 0.4 + i * 0.08) * 0.015;
+          positions[i * 3 + 2] = baseZ + wave + wave2;
         }
       }
     }
@@ -233,6 +174,13 @@ export function MorphingNeuralMesh({
         const targetRotX = state.pointer.y * Math.PI * 0.15;
         groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.03;
         groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.03;
+      } else {
+        // Disco plano: rotacion suave en el plano XY y ligera inclinacion
+        const time = performance.now() * 0.001;
+        groupRef.current.rotation.z = Math.sin(time * 0.3) * 0.05;
+        // Ligera inclinacion para efecto 3D
+        groupRef.current.rotation.x = Math.PI * 0.15 + Math.sin(time * 0.4) * 0.03;
+        groupRef.current.rotation.y = Math.cos(time * 0.25) * 0.04;
       }
     }
 
