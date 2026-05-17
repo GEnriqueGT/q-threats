@@ -327,10 +327,11 @@ export class BridgeMeshSimulator {
     elastic = true,
   ): void {
     const byId = new Map(anchors.map((a) => [a.id, a]));
-    const kTarget = elastic ? 0.22 : 1;
-    const kLink = elastic ? 0.38 : 1;
-    const damping = elastic ? 0.82 : 0;
-    const substeps = elastic ? 2 : 1;
+    // Parametros de fisica mas elasticos para efecto de rebote
+    const kTarget = elastic ? 0.12 : 1; // Mas suave = mas rebote
+    const kLink = elastic ? 0.55 : 1; // Resortes mas fuertes entre puntos
+    const damping = elastic ? 0.88 : 0; // Menos amortiguamiento = mas rebote
+    const substeps = elastic ? 3 : 1; // Mas substeps para estabilidad
     const subDt = dt / substeps;
 
     for (let sub = 0; sub < substeps; sub++) {

@@ -96,8 +96,9 @@ export function AnalysisNetworkView({
 
   // Physics simulation loop
   useEffect(() => {
-    const SPRING = 0.08; // Spring stiffness
-    const DAMPING = 0.75; // Velocity damping
+    const SPRING = 0.06; // Spring stiffness - mas suave para mas rebote
+    const DAMPING = 0.82; // Velocity damping - mas alto = mas rebote
+    const CHAIN_SPRING = 0.12; // Spring entre nodos de la cadena
     const pad = 60;
 
     const tick = () => {
@@ -109,8 +110,10 @@ export function AnalysisNetworkView({
 
       let needsUpdate = false;
       const updated = currentNodes.map((node, idx) => {
-        // If being dragged, target is set by drag handler
-        // Otherwise, apply spring physics toward target
+        // Si es el nodo arrastrado, no aplicar fisica
+        if (dragIdRef.current === node.id) {
+          return node;
+        }
         
         // Spring force toward target
         const dx = node.targetX - node.x;
@@ -119,6 +122,34 @@ export function AnalysisNetworkView({
         // Apply spring acceleration
         let nvx = node.vx + dx * SPRING;
         let nvy = node.vy + dy * SPRING;
+        
+        // Fuerza de cadena: los vecinos se atraen/repelen
+        const prevNode = currentNodes[idx - 1];
+        const nextNode = currentNodes[idx + 1];
+        
+        if (prevNode) {
+          const pdx = prevNode.x - node.x;
+          const pdy = prevNode.y - node.y;
+          const dist = Math.sqrt(pdx * pdx + pdy * pdy);
+          const idealDist = 180;
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += pdx * force;
+            nvy += pdy * force;
+          }
+        }
+        
+        if (nextNode) {
+          const ndx = nextNode.x - node.x;
+          const ndy = nextNode.y - node.y;
+          const dist = Math.sqrt(ndx * ndx + ndy * ndy);
+          const idealDist = 180;
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += ndx * force;
+            nvy += ndy * force;
+          }
+        }
         
         // Apply damping
         nvx *= DAMPING;
@@ -197,48 +228,51 @@ export function AnalysisNetworkView({
     const draggedIdx = currentNodes.findIndex((n) => n.id === dragIdRef.current);
     if (draggedIdx === -1) return;
     
+    const draggedNode = currentNodes[draggedIdx];
+    const deltaX = newX - draggedNode.x;
+    const deltaY = newY - draggedNode.y;
+    
     const updated = currentNodes.map((node, idx) => {
       if (node.id === dragIdRef.current) {
-        // Dragged node moves directly to mouse position
+        // Nodo arrastrado: se mueve directamente con el mouse
         return { ...node, x: newX, y: newY, targetX: newX, targetY: newY, vx: 0, vy: 0 };
       }
       
       const rowDistance = Math.abs(idx - draggedIdx);
       
-      // Chain physics: 
-      // - Neighbor has resistance (follows with delay/spring)
-      // - Far nodes follow the neighbor (cascading effect)
-      let newTargetX = node.targetX;
-      let newTargetY = node.targetY;
+      // Cadena con fisica de resorte:
+      // - Vecino inmediato: recibe impulso pero con resistencia
+      // - Nodos lejanos: el ultimo sigue sin resistencia
+      const isLast = idx === 0 || idx === currentNodes.length - 1;
       
       if (rowDistance === 1) {
-        // Direct neighbor: follows dragged node with some offset to create tension
-        const draggedNode = currentNodes[draggedIdx];
-        const deltaX = newX - draggedNode.x;
-        const deltaY = newY - draggedNode.y;
-        // Neighbor's target moves toward dragged node but with resistance
-        newTargetX = node.targetX + deltaX * 0.6;
-        newTargetY = node.targetY + deltaY * 0.6;
-      } else if (rowDistance > 1) {
-        // Far nodes: follow their neighbor in the chain (toward dragged)
-        const neighborIdx = idx < draggedIdx ? idx + 1 : idx - 1;
-        const neighbor = currentNodes[neighborIdx];
-        if (neighbor) {
-          // Follow neighbor's current position with less resistance
-          const deltaX = neighbor.x - node.x;
-          const deltaY = neighbor.y - node.y;
-          // Maintain some distance but follow
-          const idealDist = 180;
-          const currentDist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-          if (currentDist > 0) {
-            const factor = (currentDist - idealDist) / currentDist;
-            newTargetX = node.x + deltaX * factor * 0.8;
-            newTargetY = node.y + deltaY * factor * 0.8;
-          }
-        }
+        // Vecino directo: tiene resistencia, recibe impulso parcial
+        return {
+          ...node,
+          vx: node.vx + deltaX * 0.35,
+          vy: node.vy + deltaY * 0.35,
+          targetX: node.targetX + deltaX * 0.25,
+          targetY: node.targetY + deltaY * 0.25,
+        };
+      } else if (isLast && rowDistance > 1) {
+        // Ultimo nodo: sigue sin resistencia
+        return {
+          ...node,
+          vx: node.vx + deltaX * 0.65,
+          vy: node.vy + deltaY * 0.65,
+          targetX: node.targetX + deltaX * 0.5,
+          targetY: node.targetY + deltaY * 0.5,
+        };
+      } else {
+        // Nodos intermedios: resistencia media
+        return {
+          ...node,
+          vx: node.vx + deltaX * 0.45,
+          vy: node.vy + deltaY * 0.45,
+          targetX: node.targetX + deltaX * 0.35,
+          targetY: node.targetY + deltaY * 0.35,
+        };
       }
-      
-      return { ...node, targetX: newTargetX, targetY: newTargetY };
     });
     
     nodesRef.current = updated;
