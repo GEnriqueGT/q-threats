@@ -3,7 +3,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { createNeuralMeshGeometry, createFlatDiscMesh, easeInOutCubic } from '@/lib/neuralMeshGeometry';
+import { createNeuralMeshGeometry, createCircleNetworkMesh, updateCircleNetworkPositions, easeInOutCubic } from '@/lib/neuralMeshGeometry';
 import { SPHERE_POINT_COUNT, SPHERE_RADIUS } from '@/lib/neuralConstants';
 import { getNeuralPointTexture } from '@/lib/neuralPointTexture';
 
@@ -21,7 +21,6 @@ interface MorphingNeuralMeshProps {
   size: { w: number; h: number };
   anchors: MeshAnchor[];
   sphereFocus?: { x: number; y: number } | null;
-  connectorEdges?: ConnectorEdge[];
 }
 
 export const MESH_TRANSIT_MS = 850;
@@ -53,33 +52,43 @@ function screenToWorld(
 export function MorphingNeuralMesh({
   phase,
   size,
+  anchors,
   sphereFocus,
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
 
   const dashboardMesh = useMemo(
-    () =>
-      createNeuralMeshGeometry(SPHERE_RADIUS, SPHERE_POINT_COUNT, 10, 3, 0.38),
+    () => createNeuralMeshGeometry(SPHERE_RADIUS, SPHERE_POINT_COUNT, 10, 3, 0.38),
     [],
   );
 
-  const flatDiscMesh = useMemo(
-    () => createFlatDiscMesh(3.2, 320, 3, 0.26),
-    [],
+  // Red circular con nodos en la circunferencia
+  // El numero de nodos se actualiza segun los anchors (excluyendo 'acquisition')
+  const nodeCount = Math.max(3, anchors.filter(a => a.id !== 'acquisition').length);
+  
+  const circleNetwork = useMemo(
+    () => createCircleNetworkMesh(nodeCount, 2.8, 180),
+    [nodeCount],
   );
 
   const isDashboard = phase === 'idle-left' || phase === 'transit';
-  const pointCount = isDashboard ? dashboardMesh.pointCount : flatDiscMesh.pointCount;
+  const pointCount = isDashboard ? dashboardMesh.pointCount : circleNetwork.pointCount;
 
   const positions = useMemo(() => {
     const buf = new Float32Array(
-      isDashboard ? dashboardMesh.spherePositions : flatDiscMesh.spherePositions,
+      isDashboard ? dashboardMesh.spherePositions : circleNetwork.positions,
     );
     return buf;
-  }, [isDashboard, dashboardMesh, flatDiscMesh]);
+  }, [isDashboard, dashboardMesh, circleNetwork]);
 
   const linePositions = useMemo(() => new Float32Array(positions), [positions]);
+
+  // Buffer para posiciones deformadas de la red circular
+  const deformedPositions = useMemo(
+    () => new Float32Array(circleNetwork.positions.length),
+    [circleNetwork],
+  );
 
   const pointTexture = useMemo(() => getNeuralPointTexture(), []);
 
@@ -110,42 +119,56 @@ export function MorphingNeuralMesh({
       positions.set(dashboardMesh.spherePositions);
       lineIndices = dashboardMesh.lineIndices;
     } else {
-      // Modo analisis: usar disco plano con red neural
-      lineIndices = flatDiscMesh.lineIndices;
+      // Modo analisis: usar red circular con nodos en la circunferencia
+      lineIndices = circleNetwork.lineIndices;
+      
+      // Centro de la pantalla
+      const centerX = w / 2;
+      const centerY = h * 0.45;
+      
+      // Obtener posiciones de los nodos de anclaje (excluyendo acquisition)
+      const nodeAnchors = anchors.filter(a => a.id !== 'acquisition');
+      const anchorPositions = nodeAnchors.map(a => ({ x: a.x, y: a.y }));
 
       if (phase === 'split') {
-        // Transicion de esfera a disco
+        // Transicion de esfera a red circular
         const posT = easeInOutCubic(Math.min(1, elapsed / MESH_SPLIT_MS));
-        for (let i = 0; i < flatDiscMesh.pointCount; i++) {
+        
+        // Primero calcular las posiciones deformadas de la red
+        updateCircleNetworkPositions(circleNetwork, anchorPositions, centerX, centerY, deformedPositions);
+        
+        for (let i = 0; i < circleNetwork.pointCount; i++) {
           const sphereIdx = i % dashboardMesh.pointCount;
           const sx = dashboardMesh.spherePositions[sphereIdx * 3];
           const sy = dashboardMesh.spherePositions[sphereIdx * 3 + 1];
           const sz = dashboardMesh.spherePositions[sphereIdx * 3 + 2];
           
-          const dx = flatDiscMesh.spherePositions[i * 3];
-          const dy = flatDiscMesh.spherePositions[i * 3 + 1];
-          const dz = flatDiscMesh.spherePositions[i * 3 + 2];
+          const dx = deformedPositions[i * 3];
+          const dy = deformedPositions[i * 3 + 1];
+          const dz = deformedPositions[i * 3 + 2];
           
           positions[i * 3] = sx + (dx - sx) * posT;
           positions[i * 3 + 1] = sy + (dy - sy) * posT;
           positions[i * 3 + 2] = sz + (dz - sz) * posT;
         }
       } else if (phase === 'gather' || phase === 'ready') {
-        // Disco establecido con efecto de flotacion
+        // Red circular establecida - deformacion basada en posicion de nodos
+        updateCircleNetworkPositions(circleNetwork, anchorPositions, centerX, centerY, deformedPositions);
+        
         const time = performance.now() * 0.001;
         
-        for (let i = 0; i < flatDiscMesh.pointCount; i++) {
-          const baseX = flatDiscMesh.spherePositions[i * 3];
-          const baseY = flatDiscMesh.spherePositions[i * 3 + 1];
-          const baseZ = flatDiscMesh.spherePositions[i * 3 + 2];
+        for (let i = 0; i < circleNetwork.pointCount; i++) {
+          const baseX = deformedPositions[i * 3];
+          const baseY = deformedPositions[i * 3 + 1];
+          const baseZ = deformedPositions[i * 3 + 2];
           
-          // Efecto de onda en el disco (flotacion)
+          // Efecto de ondulacion sutil
           const dist = Math.sqrt(baseX * baseX + baseY * baseY);
-          const wave = Math.sin(time * 1.5 + dist * 1.2) * 0.06;
-          const wave2 = Math.cos(time * 0.8 + i * 0.05) * 0.03;
+          const wave = Math.sin(time * 1.2 + dist * 1.5) * 0.04;
+          const wave2 = Math.cos(time * 0.7 + i * 0.04) * 0.02;
           
-          positions[i * 3] = baseX + Math.sin(time * 0.5 + i * 0.1) * 0.015;
-          positions[i * 3 + 1] = baseY + Math.cos(time * 0.4 + i * 0.08) * 0.015;
+          positions[i * 3] = baseX + Math.sin(time * 0.4 + i * 0.08) * 0.01;
+          positions[i * 3 + 1] = baseY + Math.cos(time * 0.35 + i * 0.06) * 0.01;
           positions[i * 3 + 2] = baseZ + wave + wave2;
         }
       }
@@ -169,18 +192,16 @@ export function MorphingNeuralMesh({
       if (isDashboard) {
         groupRef.current.rotation.y += 0.0008;
         groupRef.current.rotation.x += 0.0003;
-        // Enhanced mouse interaction - more responsive to hover
         const targetRotY = state.pointer.x * Math.PI * 0.25;
         const targetRotX = state.pointer.y * Math.PI * 0.15;
         groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.03;
         groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.03;
       } else {
-        // Disco plano: rotacion suave en el plano XY y ligera inclinacion
+        // Red circular: rotacion muy sutil para dar profundidad
         const time = performance.now() * 0.001;
-        groupRef.current.rotation.z = Math.sin(time * 0.3) * 0.05;
-        // Ligera inclinacion para efecto 3D
-        groupRef.current.rotation.x = Math.PI * 0.15 + Math.sin(time * 0.4) * 0.03;
-        groupRef.current.rotation.y = Math.cos(time * 0.25) * 0.04;
+        groupRef.current.rotation.z = Math.sin(time * 0.2) * 0.03;
+        groupRef.current.rotation.x = Math.PI * 0.1 + Math.sin(time * 0.3) * 0.02;
+        groupRef.current.rotation.y = Math.cos(time * 0.2) * 0.03;
       }
     }
 
@@ -211,10 +232,10 @@ export function MorphingNeuralMesh({
         </bufferGeometry>
         <pointsMaterial
           map={pointTexture}
-          size={isDashboard ? 0.052 : 0.042}
+          size={isDashboard ? 0.052 : 0.055}
           color="#9eb8ae"
           transparent
-          opacity={isDashboard ? 0.72 : 0.68}
+          opacity={isDashboard ? 0.72 : 0.75}
           sizeAttenuation
           depthWrite={false}
           alphaTest={0.08}
@@ -229,7 +250,7 @@ export function MorphingNeuralMesh({
         <lineBasicMaterial
           color="#8fb5a8"
           transparent
-          opacity={isDashboard ? 0.34 : 0.38}
+          opacity={isDashboard ? 0.34 : 0.42}
           depthWrite={false}
         />
       </lineSegments>

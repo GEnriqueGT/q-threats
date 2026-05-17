@@ -2,25 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  type SimulationLinkDatum,
-} from 'd3-force';
 import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
-import { layoutNodesAroundCompra } from '@/lib/analysisLayout';
 import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
 import { MESH_GATHER_MS } from './MorphingNeuralMesh';
 
 type SimNode = AnalysisNode & {
   x: number;
   y: number;
-  vx?: number;
-  vy?: number;
-  fx?: number | null;
-  fy?: number | null;
+  vx: number;
+  vy: number;
+  angle: number;
+  targetAngle: number;
 };
 
 interface AnalysisNetworkViewProps {
@@ -30,12 +22,6 @@ interface AnalysisNetworkViewProps {
   onAnchorsChange: (anchors: MeshAnchor[]) => void;
 }
 
-function collideRadius(node: SimNode): number {
-  if (node.id === 'acquisition') return 150;
-  if (node.role === 'institution') return 62;
-  return 54;
-}
-
 export function AnalysisNetworkView({
   analysis,
   onBack,
@@ -43,29 +29,25 @@ export function AnalysisNetworkView({
   onAnchorsChange,
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const simRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
   const dragIdRef = useRef<string | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const animationRef = useRef<number | null>(null);
 
   const [size, setSize] = useState({ w: 1000, h: 600 });
   const [nodes, setNodes] = useState<SimNode[]>([]);
+  const nodesRef = useRef<SimNode[]>([]);
 
-  const [selectedId, setSelectedId] = useState<string>('acquisition');
+  const [selectedId, setSelectedId] = useState<string>('');
 
   const graphNodes = useMemo(
     () => analysis.nodes.filter((n) => n.role !== 'acquisition'),
     [analysis.nodes],
   );
 
-  const hubPos = useMemo(() => {
-    const acq = nodes.find((n) => n.id === 'acquisition');
-    if (acq) return { x: acq.x, y: acq.y };
-    return { x: size.w * 0.5, y: size.h * 0.48 };
-  }, [nodes, size]);
-
-  const layoutTargets = useMemo(
-    () => layoutNodesAroundCompra(hubPos, graphNodes, size),
-    [hubPos, graphNodes, size],
-  );
+  // Radio y centro del circulo
+  const circleRadius = useMemo(() => Math.min(size.w, size.h) * 0.28, [size]);
+  const centerX = useMemo(() => size.w * 0.5, [size.w]);
+  const centerY = useMemo(() => size.h * 0.42, [size.h]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -78,133 +60,221 @@ export function AnalysisNetworkView({
     return () => ro.disconnect();
   }, []);
 
+  // Inicializar nodos en la circunferencia
   useEffect(() => {
     if (neuralPhase !== 'gather' && neuralPhase !== 'ready') return;
     if (size.w < 200) return;
 
-    const pad = 88;
-    const cx = size.w * 0.5;
-    const cy = size.h * 0.48;
-
-    const acquisition: SimNode = {
-      id: 'acquisition',
-      title: 'Adquisición',
-      description: analysis.acquisition.summary,
-      risks: [],
-      imageUrl: '',
-      sources: [],
-      role: 'acquisition',
-      x: cx,
-      y: cy,
-    };
-
-    const initial: SimNode[] = [
-      acquisition,
-      ...graphNodes.map((n) => ({
+    const count = graphNodes.length;
+    const initial: SimNode[] = graphNodes.map((n, i) => {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      const x = centerX + circleRadius * Math.cos(angle);
+      const y = centerY + circleRadius * Math.sin(angle);
+      return {
         ...n,
-        x: layoutNodesAroundCompra({ x: cx, y: cy }, graphNodes, size)[n.id]?.x ?? cx,
-        y: layoutNodesAroundCompra({ x: cx, y: cy }, graphNodes, size)[n.id]?.y ?? cy,
-      })),
-    ];
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        angle,
+        targetAngle: angle,
+      };
+    });
 
-    const links: SimulationLinkDatum<SimNode>[] = analysis.edges.map((e) => ({
-      source: e.from,
-      target: e.to,
-    }));
-
-    const sim = forceSimulation<SimNode>(initial)
-      .force(
-        'link',
-        forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
-          .id((d) => d.id)
-          .distance((l) => {
-            const s = l.source as SimNode;
-            const t = l.target as SimNode;
-            if (s.id === 'acquisition' || t.id === 'acquisition') return 210;
-            return 175;
-          })
-          .strength(0.38),
-      )
-      .force('charge', forceManyBody<SimNode>().strength(-240).distanceMax(520))
-      .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(0.85))
-      .velocityDecay(0.65)
-      .alphaDecay(0.022)
-      .alphaMin(0.001)
-      .on('tick', () => {
-        for (const node of initial) {
-          const r = collideRadius(node);
-          node.x = Math.max(pad + r, Math.min(size.w - pad - r, node.x));
-          node.y = Math.max(pad + r + 50, Math.min(size.h - pad - r - 36, node.y));
-        }
-        setNodes([...initial]);
-      });
-
-    simRef.current = sim;
-    return () => {
-      sim.stop();
-    };
-  }, [neuralPhase, size, analysis.edges, analysis.acquisition.summary, graphNodes]);
-
-  const meshAnchors = useMemo((): MeshAnchor[] => {
-    const list: MeshAnchor[] = [{ id: 'acquisition', x: hubPos.x, y: hubPos.y, weight: 3.5 }];
-    for (const n of graphNodes) {
-      const p = nodes.find((x) => x.id === n.id);
-      list.push({
-        id: n.id,
-        x: p?.x ?? layoutTargets[n.id]?.x ?? hubPos.x,
-        y: p?.y ?? layoutTargets[n.id]?.y ?? hubPos.y,
-        weight: 1.2,
-      });
+    setNodes(initial);
+    nodesRef.current = initial;
+    if (initial.length > 0 && !selectedId) {
+      setSelectedId(initial[0].id);
     }
-    return list;
-  }, [hubPos, graphNodes, nodes, layoutTargets]);
+  }, [neuralPhase, size, graphNodes, circleRadius, centerX, centerY, selectedId]);
+
+  // Simulacion de fisica con spring y amortiguamiento (tipo agua)
+  useEffect(() => {
+    const SPRING = 0.035;
+    const DAMPING = 0.88;
+    const CHAIN_SPRING = 0.025;
+
+    const tick = () => {
+      const currentNodes = nodesRef.current;
+      if (currentNodes.length === 0) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      let needsUpdate = false;
+      const updated = currentNodes.map((node, idx) => {
+        if (dragIdRef.current === node.id) {
+          return node;
+        }
+
+        // Posicion objetivo en la circunferencia
+        const targetX = centerX + circleRadius * Math.cos(node.targetAngle);
+        const targetY = centerY + circleRadius * Math.sin(node.targetAngle);
+
+        const dx = targetX - node.x;
+        const dy = targetY - node.y;
+
+        let nvx = node.vx + dx * SPRING;
+        let nvy = node.vy + dy * SPRING;
+
+        // Fuerza de cadena con vecinos
+        const prevNode = currentNodes[(idx - 1 + currentNodes.length) % currentNodes.length];
+        const nextNode = currentNodes[(idx + 1) % currentNodes.length];
+
+        if (prevNode && prevNode.id !== dragIdRef.current) {
+          const pdx = prevNode.x - node.x;
+          const pdy = prevNode.y - node.y;
+          const dist = Math.sqrt(pdx * pdx + pdy * pdy);
+          const idealDist = 2 * circleRadius * Math.sin(Math.PI / currentNodes.length);
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += pdx * force;
+            nvy += pdy * force;
+          }
+        }
+
+        if (nextNode && nextNode.id !== dragIdRef.current) {
+          const ndx = nextNode.x - node.x;
+          const ndy = nextNode.y - node.y;
+          const dist = Math.sqrt(ndx * ndx + ndy * ndy);
+          const idealDist = 2 * circleRadius * Math.sin(Math.PI / currentNodes.length);
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += ndx * force;
+            nvy += ndy * force;
+          }
+        }
+
+        nvx *= DAMPING;
+        nvy *= DAMPING;
+
+        const nx = node.x + nvx;
+        const ny = node.y + nvy;
+
+        if (Math.abs(nvx) > 0.01 || Math.abs(nvy) > 0.01 || Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          needsUpdate = true;
+        }
+
+        return { ...node, x: nx, y: ny, vx: nvx, vy: nvy };
+      });
+
+      if (needsUpdate) {
+        nodesRef.current = updated;
+        setNodes(updated);
+      }
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [circleRadius, centerX, centerY]);
+
+  // Mesh anchors para la red neural
+  const meshAnchors = useMemo((): MeshAnchor[] => {
+    return nodes.map((n) => ({
+      id: n.id,
+      x: n.x,
+      y: n.y,
+      weight: 1.5,
+    }));
+  }, [nodes]);
 
   useEffect(() => {
     onAnchorsChange(meshAnchors);
   }, [meshAnchors, onAnchorsChange]);
 
+  // Drag handlers
+  const handleDragStart = useCallback((id: string, clientX: number, clientY: number) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragIdRef.current = id;
+    dragOffsetRef.current = {
+      x: clientX - rect.left - node.x,
+      y: clientY - rect.top - node.y,
+    };
+  }, []);
+
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!dragIdRef.current) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const newX = clientX - rect.left - dragOffsetRef.current.x;
+    const newY = clientY - rect.top - dragOffsetRef.current.y;
+
+    // Calcular el nuevo angulo basado en la posicion del mouse
+    const dx = newX - centerX;
+    const dy = newY - centerY;
+    const newAngle = Math.atan2(dy, dx);
+
+    const currentNodes = nodesRef.current;
+    const draggedIdx = currentNodes.findIndex((n) => n.id === dragIdRef.current);
+    if (draggedIdx === -1) return;
+
+    const draggedNode = currentNodes[draggedIdx];
+    const angleDelta = newAngle - draggedNode.angle;
+
+    const updated = currentNodes.map((node, idx) => {
+      if (node.id === dragIdRef.current) {
+        // Nodo arrastrado: se mueve libremente
+        return {
+          ...node,
+          x: newX,
+          y: newY,
+          angle: newAngle,
+          targetAngle: newAngle,
+          vx: 0,
+          vy: 0,
+        };
+      }
+
+      // Cadena elastica: los vecinos se mueven con resistencia
+      const distance = Math.abs(idx - draggedIdx);
+      const chainDistance = Math.min(distance, currentNodes.length - distance);
+
+      // Factor de elasticidad: vecino directo tiene resistencia, los demas siguen mas
+      let elasticity: number;
+      if (chainDistance === 1) {
+        elasticity = 0.3; // Vecino directo: resistencia
+      } else if (chainDistance === 2) {
+        elasticity = 0.5;
+      } else {
+        elasticity = 0.7; // Nodos lejanos: siguen mas
+      }
+
+      const newTargetAngle = node.targetAngle + angleDelta * elasticity;
+      return { ...node, targetAngle: newTargetAngle };
+    });
+
+    nodesRef.current = updated;
+  }, [centerX, centerY]);
+
+  const handleDragEnd = useCallback(() => {
+    dragIdRef.current = null;
+  }, []);
+
   const onPointerDown = useCallback((id: string, e: React.PointerEvent) => {
     e.stopPropagation();
-    dragIdRef.current = id;
     setSelectedId(id);
-    const node = simRef.current?.nodes().find((n) => n.id === id);
-    if (node) {
-      node.fx = node.x;
-      node.fy = node.y;
-      node.vx = 0;
-      node.vy = 0;
-    }
-    simRef.current?.alphaTarget(0.12).restart();
+    handleDragStart(id, e.clientX, e.clientY);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+  }, [handleDragStart]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragIdRef.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const node = simRef.current?.nodes().find((n) => n.id === dragIdRef.current);
-    if (node) {
-      node.fx = e.clientX - rect.left;
-      node.fy = e.clientY - rect.top;
-    }
-  }, []);
+    handleDragMove(e.clientX, e.clientY);
+  }, [handleDragMove]);
 
   const onPointerUp = useCallback(() => {
-    const id = dragIdRef.current;
-    if (id) {
-      const node = simRef.current?.nodes().find((n) => n.id === id);
-      if (node) {
-        node.fx = null;
-        node.fy = null;
-      }
-    }
-    dragIdRef.current = null;
-    simRef.current?.alphaTarget(0);
-  }, []);
+    handleDragEnd();
+  }, [handleDragEnd]);
 
-  const selectedNode = graphNodes.find((n) => n.id === selectedId);
-  const isAcquisition = selectedId === 'acquisition';
+  const selectedNode = nodes.find((n) => n.id === selectedId);
   const showNodes = neuralPhase === 'gather' || neuralPhase === 'ready';
-  const showHub = neuralPhase !== 'idle-left';
 
   const [reveal, setReveal] = useState(0);
   useEffect(() => {
@@ -228,7 +298,6 @@ export function AnalysisNetworkView({
   }, [showNodes, neuralPhase]);
 
   const nodeRevealClamped = neuralPhase === 'ready' ? 1 : reveal;
-  const hubReveal = showHub ? Math.max(nodeRevealClamped, neuralPhase === 'transit' ? 0.85 : 1) : 0;
 
   return (
     <motion.div
@@ -242,88 +311,57 @@ export function AnalysisNetworkView({
         <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
       </div>
 
-      {(showHub || showNodes) && (
-        <div
-          className="absolute z-20 max-w-md touch-none"
-          style={{
-            left: hubPos.x,
-            top: hubPos.y,
-            transform: 'translate(-50%, -50%)',
-            opacity: hubReveal,
-            pointerEvents: hubReveal > 0.4 ? 'auto' : 'none',
-          }}
-          onPointerDown={(e) => onPointerDown('acquisition', e)}
-        >
-          <button
-            type="button"
-            onClick={() => setSelectedId('acquisition')}
-            className={`text-left w-72 rounded-2xl border p-4 transition-colors glass-panel cursor-grab active:cursor-grabbing ${
-              isAcquisition
-                ? 'border-teal-400/60 shadow-[0_0_24px_rgba(94,234,212,0.2)]'
-                : 'border-white/15 hover:border-white/30'
-            }`}
-          >
-            <p className="text-xs uppercase tracking-widest text-teal-300/80 mb-1">Adquisición</p>
-            <p className="text-sm font-semibold text-white leading-snug">{analysis.acquisition.title}</p>
-            <p className="text-xs text-white/60 mt-1">{analysis.acquisition.amount}</p>
-          </button>
-        </div>
-      )}
-
       {showNodes &&
-        nodes
-          .filter((n) => n.id !== 'acquisition')
-          .map((node) => {
-            const active = selectedId === node.id;
-            const sizePx = node.role === 'institution' ? 112 : 96;
-            return (
+        nodes.map((node) => {
+          const active = selectedId === node.id;
+          const sizePx = node.role === 'institution' ? 100 : 88;
+          return (
+            <div
+              key={node.id}
+              className="absolute z-10 touch-none"
+              style={{
+                left: node.x,
+                top: node.y,
+                width: sizePx,
+                height: sizePx,
+                marginLeft: -sizePx / 2,
+                marginTop: -sizePx / 2,
+                opacity: nodeRevealClamped,
+                transform: `scale(${0.5 + nodeRevealClamped * 0.5})`,
+                transition: dragIdRef.current === node.id ? 'none' : 'opacity 0.35s ease-out',
+              }}
+              onPointerDown={(e) => onPointerDown(node.id, e)}
+            >
               <div
-                key={node.id}
-                className="absolute z-10 touch-none"
-                style={{
-                  left: node.x,
-                  top: node.y,
-                  width: sizePx,
-                  height: sizePx,
-                  marginLeft: -sizePx / 2,
-                  marginTop: -sizePx / 2,
-                  opacity: nodeRevealClamped,
-                  transform: `scale(${0.5 + nodeRevealClamped * 0.5})`,
-                  transition: 'opacity 0.35s ease-out',
-                }}
-                onPointerDown={(e) => onPointerDown(node.id, e)}
+                className={`w-full h-full rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-shadow ${
+                  node.highlight
+                    ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.35)]'
+                    : 'border-white/25'
+                } ${active ? 'ring-2 ring-teal-400/70' : ''}`}
               >
-                <div
-                  className={`w-full h-full rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-shadow ${
-                    node.highlight
-                      ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.35)]'
-                      : 'border-white/25'
-                  } ${active ? 'ring-2 ring-teal-400/70' : ''}`}
-                  onClick={() => setSelectedId(node.id)}
-                >
-                  {node.imageUrl ? (
-                    <img
-                      src={node.imageUrl}
-                      alt={node.title}
-                      className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-2 object-contain' : ''}`}
-                      draggable={false}
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/70 text-sm">
-                      {node.title}
-                    </div>
-                  )}
-                </div>
-                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/70 whitespace-nowrap">
-                  {node.title}
-                </span>
+                {node.imageUrl ? (
+                  <img
+                    src={node.imageUrl}
+                    alt={node.title}
+                    className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-2 object-contain' : ''}`}
+                    draggable={false}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/70 text-sm">
+                    {node.title}
+                  </div>
+                )}
               </div>
-            );
-          })}
+              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/70 whitespace-nowrap">
+                {node.title}
+              </span>
+            </div>
+          );
+        })}
 
       <AnimatePresence mode="wait">
-        {nodeRevealClamped > 0.65 && (
+        {nodeRevealClamped > 0.65 && selectedNode && (
           <motion.div
             key={selectedId}
             initial={{ opacity: 0, y: 16 }}
@@ -331,60 +369,46 @@ export function AnalysisNetworkView({
             exit={{ opacity: 0, y: -8 }}
             className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-8 pointer-events-auto"
           >
-            {isAcquisition ? (
-              <motion.div className="glass-panel rounded-2xl p-6 border border-white/10 text-center">
-                <p className="text-lg leading-relaxed text-white/90">{analysis.acquisition.summary}</p>
-                <a
-                  href={analysis.acquisition.guatecomprasUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex mt-5 px-6 py-2.5 rounded-full bg-teal-800/50 border border-teal-500/40 text-teal-100 text-sm font-medium hover:bg-teal-700/50 transition"
-                >
-                  Ver en Guatecompras →
-                </a>
-              </motion.div>
-            ) : selectedNode ? (
-              <motion.div className="glass-panel rounded-2xl p-6 border border-white/10">
-                <p className="text-white/80 mb-4">{selectedNode.description}</p>
-                {selectedNode.risks.length > 0 && (
-                  <>
-                    <h4 className="text-lg font-semibold text-white mb-3">
-                      Esta compra presenta riesgos debido a:
-                    </h4>
-                    <ul className="list-disc pl-5 space-y-2 text-white/85 mb-4">
-                      {selectedNode.risks.map((risk) => (
-                        <li key={risk}>{risk}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {selectedNode.sources.length > 0 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-sm font-semibold text-white/60">Fuentes:</span>
-                    {selectedNode.sources.map((s) =>
-                      s.url ? (
-                        <a
-                          key={s.label}
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-lg glass text-sm text-white/90 hover:bg-white/15"
-                        >
-                          {s.label}
-                        </a>
-                      ) : (
-                        <span
-                          key={s.label}
-                          className="px-3 py-1.5 rounded-lg glass text-sm text-white/90"
-                        >
-                          {s.label}
-                        </span>
-                      ),
-                    )}
-                  </div>
-                )}
-              </motion.div>
-            ) : null}
+            <motion.div className="glass-panel rounded-2xl p-6 border border-white/10">
+              <p className="text-white/80 mb-4">{selectedNode.description}</p>
+              {selectedNode.risks.length > 0 && (
+                <>
+                  <h4 className="text-lg font-semibold text-white mb-3">
+                    Esta compra presenta riesgos debido a:
+                  </h4>
+                  <ul className="list-disc pl-5 space-y-2 text-white/85 mb-4">
+                    {selectedNode.risks.map((risk) => (
+                      <li key={risk}>{risk}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {selectedNode.sources.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-sm font-semibold text-white/60">Fuentes:</span>
+                  {selectedNode.sources.map((s) =>
+                    s.url ? (
+                      <a
+                        key={s.label}
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded-lg glass text-sm text-white/90 hover:bg-white/15"
+                      >
+                        {s.label}
+                      </a>
+                    ) : (
+                      <span
+                        key={s.label}
+                        className="px-3 py-1.5 rounded-lg glass text-sm text-white/90"
+                      >
+                        {s.label}
+                      </span>
+                    ),
+                  )}
+                </div>
+              )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -401,4 +425,3 @@ export function AnalysisNetworkView({
     </motion.div>
   );
 }
-
