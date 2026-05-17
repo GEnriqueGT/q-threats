@@ -11,8 +11,8 @@ export function layoutNodesAroundCompra(
   nodes: AnalysisNode[],
   size: { w: number; h: number },
 ): Record<string, LayoutPoint> {
-  const spreadX = Math.min(size.w, size.h) * 0.28;
-  const spreadY = Math.min(size.w, size.h) * 0.22;
+  const spreadX = Math.min(size.w, size.h) * 0.42;
+  const spreadY = Math.min(size.w, size.h) * 0.35;
   const out: Record<string, LayoutPoint> = {};
 
   for (const node of nodes) {
@@ -21,15 +21,15 @@ export function layoutNodesAroundCompra(
         out[node.id] = { x: hub.x - spreadX, y: hub.y };
         break;
       case 'supplier':
-        out[node.id] = { x: hub.x + spreadX, y: hub.y - spreadY * 0.35 };
+        out[node.id] = { x: hub.x + spreadX, y: hub.y - spreadY * 0.3 };
         break;
       case 'product':
-        out[node.id] = { x: hub.x + spreadX * 0.15, y: hub.y + spreadY };
+        out[node.id] = { x: hub.x + spreadX * 0.2, y: hub.y + spreadY };
         break;
       default:
         out[node.id] = {
-          x: hub.x + spreadX * 0.5,
-          y: hub.y + spreadY * 0.5,
+          x: hub.x + spreadX * 0.6,
+          y: hub.y + spreadY * 0.6,
         };
     }
   }

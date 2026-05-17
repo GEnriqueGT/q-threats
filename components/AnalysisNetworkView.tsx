@@ -31,9 +31,9 @@ interface AnalysisNetworkViewProps {
 }
 
 function collideRadius(node: SimNode): number {
-  if (node.id === 'acquisition') return 150;
-  if (node.role === 'institution') return 62;
-  return 54;
+  if (node.id === 'acquisition') return 180;
+  if (node.role === 'institution') return 90;
+  return 80;
 }
 
 export function AnalysisNetworkView({
@@ -120,13 +120,13 @@ export function AnalysisNetworkView({
           .distance((l) => {
             const s = l.source as SimNode;
             const t = l.target as SimNode;
-            if (s.id === 'acquisition' || t.id === 'acquisition') return 210;
-            return 175;
+            if (s.id === 'acquisition' || t.id === 'acquisition') return 320;
+            return 280;
           })
-          .strength(0.38),
+          .strength(0.25),
       )
-      .force('charge', forceManyBody<SimNode>().strength(-240).distanceMax(520))
-      .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(0.85))
+      .force('charge', forceManyBody<SimNode>().strength(-450).distanceMax(700))
+      .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(0.9))
       .velocityDecay(0.65)
       .alphaDecay(0.022)
       .alphaMin(0.001)
