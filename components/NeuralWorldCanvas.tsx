@@ -2,8 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import dynamic from 'next/dynamic';
-import type { ConnectorEdge } from '@/lib/neuralConnectors';
-import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
+import type { MeshPhase } from './MorphingNeuralMesh';
 
 const MorphingNeuralMesh = dynamic(
   () => import('./MorphingNeuralMesh').then((m) => m.MorphingNeuralMesh),
@@ -13,19 +12,15 @@ const MorphingNeuralMesh = dynamic(
 interface NeuralWorldCanvasProps {
   phase: MeshPhase;
   size: { w: number; h: number };
-  anchors: MeshAnchor[];
   visible: boolean;
   sphereFocus?: { x: number; y: number } | null;
-  connectorEdges?: ConnectorEdge[];
 }
 
 export function NeuralWorldCanvas({
   phase,
   size,
-  anchors,
   visible,
   sphereFocus,
-  connectorEdges = [],
 }: NeuralWorldCanvasProps) {
   if (!visible) return null;
 
@@ -43,9 +38,7 @@ export function NeuralWorldCanvas({
         <MorphingNeuralMesh
           phase={phase}
           size={size}
-          anchors={anchors}
           sphereFocus={sphereFocus}
-          connectorEdges={connectorEdges}
         />
       </Canvas>
     </div>

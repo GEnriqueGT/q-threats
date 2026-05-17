@@ -3,7 +3,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { createNeuralMeshGeometry, createCircleNetworkMesh, updateCircleNetworkPositions, easeInOutCubic } from '@/lib/neuralMeshGeometry';
+import { createNeuralMeshGeometry, easeInOutCubic } from '@/lib/neuralMeshGeometry';
 import { SPHERE_POINT_COUNT, SPHERE_RADIUS } from '@/lib/neuralConstants';
 import { getNeuralPointTexture } from '@/lib/neuralPointTexture';
 
@@ -19,7 +19,6 @@ export interface MeshAnchor {
 interface MorphingNeuralMeshProps {
   phase: MeshPhase;
   size: { w: number; h: number };
-  anchors: MeshAnchor[];
   sphereFocus?: { x: number; y: number } | null;
 }
 
@@ -52,7 +51,6 @@ function screenToWorld(
 export function MorphingNeuralMesh({
   phase,
   size,
-  anchors,
   sphereFocus,
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
@@ -63,32 +61,16 @@ export function MorphingNeuralMesh({
     [],
   );
 
-  // Red circular con nodos en la circunferencia
-  // El numero de nodos se actualiza segun los anchors (excluyendo 'acquisition')
-  const nodeCount = Math.max(3, anchors.filter(a => a.id !== 'acquisition').length);
-  
-  const circleNetwork = useMemo(
-    () => createCircleNetworkMesh(nodeCount, 2.8, 180),
-    [nodeCount],
-  );
-
   const isDashboard = phase === 'idle-left' || phase === 'transit';
-  const pointCount = isDashboard ? dashboardMesh.pointCount : circleNetwork.pointCount;
+  // Siempre usar la esfera - misma geometria en dashboard y analisis
+  const pointCount = dashboardMesh.pointCount;
 
   const positions = useMemo(() => {
-    const buf = new Float32Array(
-      isDashboard ? dashboardMesh.spherePositions : circleNetwork.positions,
-    );
+    const buf = new Float32Array(dashboardMesh.spherePositions);
     return buf;
-  }, [isDashboard, dashboardMesh, circleNetwork]);
+  }, [dashboardMesh]);
 
   const linePositions = useMemo(() => new Float32Array(positions), [positions]);
-
-  // Buffer para posiciones deformadas de la red circular
-  const deformedPositions = useMemo(
-    () => new Float32Array(circleNetwork.positions.length),
-    [circleNetwork],
-  );
 
   const pointTexture = useMemo(() => getNeuralPointTexture(), []);
 
@@ -115,62 +97,17 @@ export function MorphingNeuralMesh({
 
     let lineIndices: Uint16Array = dashboardMesh.lineIndices;
 
-    if (isDashboard) {
-      positions.set(dashboardMesh.spherePositions);
-      lineIndices = dashboardMesh.lineIndices;
-    } else {
-      // Modo analisis: usar red circular con nodos en la circunferencia
-      lineIndices = circleNetwork.lineIndices;
-      
-      // Centro de la pantalla
-      const centerX = w / 2;
-      const centerY = h * 0.45;
-      
-      // Obtener posiciones de los nodos de anclaje (excluyendo acquisition)
-      const nodeAnchors = anchors.filter(a => a.id !== 'acquisition');
-      const anchorPositions = nodeAnchors.map(a => ({ x: a.x, y: a.y }));
-
-      if (phase === 'split') {
-        // Transicion de esfera a red circular
-        const posT = easeInOutCubic(Math.min(1, elapsed / MESH_SPLIT_MS));
-        
-        // Primero calcular las posiciones deformadas de la red
-        updateCircleNetworkPositions(circleNetwork, anchorPositions, centerX, centerY, deformedPositions);
-        
-        for (let i = 0; i < circleNetwork.pointCount; i++) {
-          const sphereIdx = i % dashboardMesh.pointCount;
-          const sx = dashboardMesh.spherePositions[sphereIdx * 3];
-          const sy = dashboardMesh.spherePositions[sphereIdx * 3 + 1];
-          const sz = dashboardMesh.spherePositions[sphereIdx * 3 + 2];
-          
-          const dx = deformedPositions[i * 3];
-          const dy = deformedPositions[i * 3 + 1];
-          const dz = deformedPositions[i * 3 + 2];
-          
-          positions[i * 3] = sx + (dx - sx) * posT;
-          positions[i * 3 + 1] = sy + (dy - sy) * posT;
-          positions[i * 3 + 2] = sz + (dz - sz) * posT;
-        }
-      } else if (phase === 'gather' || phase === 'ready') {
-        // Red circular establecida - deformacion basada en posicion de nodos
-        updateCircleNetworkPositions(circleNetwork, anchorPositions, centerX, centerY, deformedPositions);
-        
-        const time = performance.now() * 0.001;
-        
-        for (let i = 0; i < circleNetwork.pointCount; i++) {
-          const baseX = deformedPositions[i * 3];
-          const baseY = deformedPositions[i * 3 + 1];
-          const baseZ = deformedPositions[i * 3 + 2];
-          
-          // Efecto de ondulacion sutil
-          const dist = Math.sqrt(baseX * baseX + baseY * baseY);
-          const wave = Math.sin(time * 1.2 + dist * 1.5) * 0.04;
-          const wave2 = Math.cos(time * 0.7 + i * 0.04) * 0.02;
-          
-          positions[i * 3] = baseX + Math.sin(time * 0.4 + i * 0.08) * 0.01;
-          positions[i * 3 + 1] = baseY + Math.cos(time * 0.35 + i * 0.06) * 0.01;
-          positions[i * 3 + 2] = baseZ + wave + wave2;
-        }
+    // Siempre usar la esfera con su geometria original
+    positions.set(dashboardMesh.spherePositions);
+    lineIndices = dashboardMesh.lineIndices;
+    
+    // Agregar ondulacion sutil en modo analisis
+    if (!isDashboard) {
+      const time = performance.now() * 0.001;
+      for (let i = 0; i < dashboardMesh.pointCount; i++) {
+        const wave = Math.sin(time * 0.8 + i * 0.05) * 0.015;
+        const wave2 = Math.cos(time * 0.6 + i * 0.03) * 0.01;
+        positions[i * 3 + 2] += wave + wave2;
       }
     }
 
@@ -197,11 +134,9 @@ export function MorphingNeuralMesh({
         groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.03;
         groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.03;
       } else {
-        // Red circular: rotacion muy sutil para dar profundidad
-        const time = performance.now() * 0.001;
-        groupRef.current.rotation.z = Math.sin(time * 0.2) * 0.03;
-        groupRef.current.rotation.x = Math.PI * 0.1 + Math.sin(time * 0.3) * 0.02;
-        groupRef.current.rotation.y = Math.cos(time * 0.2) * 0.03;
+        // Modo analisis: rotacion lenta continua
+        groupRef.current.rotation.y += 0.0012;
+        groupRef.current.rotation.x += 0.0004;
       }
     }
 

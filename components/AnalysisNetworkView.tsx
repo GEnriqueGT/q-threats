@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
-import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
+import type { MeshPhase } from './MorphingNeuralMesh';
 import { MESH_GATHER_MS } from './MorphingNeuralMesh';
 
 type SimNode = AnalysisNode & {
@@ -19,14 +19,12 @@ interface AnalysisNetworkViewProps {
   analysis: ThreatAnalysis;
   onBack: () => void;
   neuralPhase: MeshPhase;
-  onAnchorsChange: (anchors: MeshAnchor[]) => void;
 }
 
 export function AnalysisNetworkView({
   analysis,
   onBack,
   neuralPhase,
-  onAnchorsChange,
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragIdRef = useRef<string | null>(null);
@@ -44,10 +42,16 @@ export function AnalysisNetworkView({
     [analysis.nodes],
   );
 
-  // Radio y centro del circulo
-  const circleRadius = useMemo(() => Math.min(size.w, size.h) * 0.28, [size]);
+  // Radio y centro del circulo - los nodos van alrededor de la esfera
+  const circleRadius = useMemo(() => Math.min(size.w, size.h) * 0.36, [size]);
   const centerX = useMemo(() => size.w * 0.5, [size.w]);
-  const centerY = useMemo(() => size.h * 0.42, [size.h]);
+  const centerY = useMemo(() => size.h * 0.46, [size.h]);
+
+  // Datos de la entidad contratante (del analysis)
+  const institutionNode = useMemo(
+    () => analysis.nodes.find(n => n.role === 'institution'),
+    [analysis.nodes]
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -171,20 +175,6 @@ export function AnalysisNetworkView({
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [circleRadius, centerX, centerY]);
-
-  // Mesh anchors para la red neural
-  const meshAnchors = useMemo((): MeshAnchor[] => {
-    return nodes.map((n) => ({
-      id: n.id,
-      x: n.x,
-      y: n.y,
-      weight: 1.5,
-    }));
-  }, [nodes]);
-
-  useEffect(() => {
-    onAnchorsChange(meshAnchors);
-  }, [meshAnchors, onAnchorsChange]);
 
   // Drag handlers
   const handleDragStart = useCallback((id: string, clientX: number, clientY: number) => {
@@ -310,6 +300,34 @@ export function AnalysisNetworkView({
       <div className="absolute top-20 left-8 z-20 pointer-events-none">
         <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
       </div>
+
+      {/* Informacion central - entidad contratante */}
+      {showNodes && nodeRevealClamped > 0.5 && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: nodeRevealClamped, scale: 1 }}
+          className="absolute z-10 pointer-events-none text-center"
+          style={{
+            left: centerX,
+            top: centerY,
+            transform: 'translate(-50%, -50%)',
+            maxWidth: 280,
+          }}
+        >
+          <p className="text-white/90 text-sm font-medium leading-relaxed">
+            {institutionNode?.title || 'Instituto Nacional de Ciencias Forenses de Guatemala'}
+          </p>
+          <p className="text-teal-400/80 text-xs mt-1">
+            Entidad Contratante
+          </p>
+          <div className="mt-3 text-white/60 text-xs space-y-1">
+            <p>{analysis.acquisition.summary}</p>
+            <p className="text-teal-300/70 font-semibold">
+              Q{analysis.acquisition.amount?.toLocaleString() || '2,000,000'}
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {showNodes &&
         nodes.map((node) => {
