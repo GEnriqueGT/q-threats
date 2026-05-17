@@ -550,7 +550,7 @@ export function AnalysisNetworkView({
       )}
 
       {/* Boton Volver */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30">
+      <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 md:bottom-28">
         <button
           type="button"
           onClick={onBack}

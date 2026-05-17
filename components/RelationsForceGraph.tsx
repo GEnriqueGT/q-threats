@@ -191,6 +191,12 @@ export function RelationsForceGraph({ analysis }: { analysis: ThreatAnalysis }) 
   clearSelectionRef.current = clearSelection;
 
   useEffect(() => {
+    if (!selectedNode) return;
+    const present = analysis.nodes.some((x) => x.id === selectedNode.id);
+    if (!present) clearSelection();
+  }, [analysis.nodes, selectedNode, clearSelection]);
+
+  useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
 

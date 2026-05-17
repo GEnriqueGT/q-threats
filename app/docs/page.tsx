@@ -8,7 +8,7 @@ export const metadata = {
 export default function DocsPage() {
   return (
     <div className="min-h-[100dvh] w-full text-white font-sans bg-gradient-to-br from-[#030603] via-[#0a1512] to-[#173330]">
-      <div className="mx-auto max-w-3xl px-6 pb-24 pt-24 lg:max-w-4xl">
+      <div className="mx-auto max-w-3xl px-6 pb-32 pt-24 lg:max-w-4xl">
         <header className="liquid-glass-card mb-10 p-8">
           <p className="text-xs uppercase tracking-[0.2em] text-teal-300/90 font-semibold">Documentacion</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-white md:text-4xl">

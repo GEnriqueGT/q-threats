@@ -111,7 +111,7 @@ export function HomePage() {
         visible={view === 'dashboard' || view === 'analysis'}
       />
 
-      <main className="absolute inset-0 pt-24 pb-10 px-12 lg:px-16 flex items-stretch z-10 pointer-events-none">
+      <main className="absolute inset-0 z-10 flex items-stretch px-12 pb-[max(6rem,calc(env(safe-area-inset-bottom,0px)+5rem))] pt-24 pointer-events-none lg:px-16">
         <AnimatePresence mode="popLayout">
           {view === 'dashboard' && (
             <motion.div
