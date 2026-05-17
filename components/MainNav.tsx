@@ -15,9 +15,9 @@ export function MainNav() {
   return (
     <nav
       aria-label="Principal"
-      className="fixed left-4 right-4 top-4 z-[60] flex justify-center pointer-events-none sm:left-6 sm:right-6 sm:top-5"
+      className="pointer-events-none fixed left-0 right-0 top-4 z-[60] px-12 sm:top-5 lg:px-16"
     >
-      <div className="liquid-glass-shell pointer-events-auto min-w-0 w-full max-w-5xl px-4 py-2 pr-5 sm:px-5 sm:py-2.5 sm:pr-7">
+      <div className="liquid-glass-shell pointer-events-auto mx-auto min-w-0 w-full max-w-[90rem] px-4 py-2 pr-5 sm:px-5 sm:py-2.5 sm:pr-7">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-8">
           <Link
           href="/"

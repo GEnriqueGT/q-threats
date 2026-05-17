@@ -1,5 +1,9 @@
 import type { Node as NeoNode } from 'neo4j-driver';
 import type { AnalysisNode } from '@/lib/types';
+import {
+  isTemporalDetailPropKey,
+  temporalNeo4jObjectToIsoDateOnly,
+} from '@/lib/neo4j/neo4jTemporalToDateOnly';
 
 function asStringProp(props: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -50,11 +54,18 @@ function serializeNeo4jProperties(props: Record<string, unknown>): Record<string
     if (v === null || v === undefined) {
       out[k] = '';
     } else if (typeof v === 'object') {
-      try {
-        const s = JSON.stringify(v);
-        out[k] = s.length > 400 ? `${s.slice(0, 397)}…` : s;
-      } catch {
-        out[k] = String(v);
+      const obj = v as Record<string, unknown>;
+      const dateOnlyIso =
+        isTemporalDetailPropKey(k) ? temporalNeo4jObjectToIsoDateOnly(obj) : null;
+      if (dateOnlyIso) {
+        out[k] = dateOnlyIso;
+      } else {
+        try {
+          const s = JSON.stringify(v);
+          out[k] = s.length > 400 ? `${s.slice(0, 397)}…` : s;
+        } catch {
+          out[k] = String(v);
+        }
       }
     } else {
       out[k] = String(v);
