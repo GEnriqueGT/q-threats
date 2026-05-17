@@ -1,0 +1,11 @@
+---
+description: Convenciones al editar datos y tipos en lib/
+globs: lib/**/*.ts
+alwaysApply: false
+---
+
+# `lib/` — datos y tipos
+
+- Tipos exportados en `types.ts` deben reflejar el JSON que consumen los clientes y las APIs.
+- `data.ts` concentra el contenido de demostración; al añadir amenazas o análisis, mantener `threatId` y referencias `edges` coherentes con los `nodes`.
+- Evitar lógica de servidor en `lib/` salvo utilidades puras; los Route Handlers orquestan la respuesta HTTP.

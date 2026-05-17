@@ -1,0 +1,13 @@
+---
+description: Patrones para componentes React y Three.js en este repo
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# React y R3F (Q Threats)
+
+- Preferir componentes funcionales; estado local con hooks donde baste.
+- Escenas **Three.js / R3F:** mantener props estables; geometrías y materiales costosos — memoizar o extraer a `lib/*` si se repiten.
+- Reutilizar constantes compartidas (`lib/neuralConstants.ts`, etc.) en lugar de números mágicos duplicados.
+- Estilos: Tailwind en JSX coherente con `app/globals.css`; no introducir otro sistema CSS sin necesidad.
+- Accesibilidad: HTML semántico en UI 2D; para canvas 3D, conservar controles o etiquetas legibles en capas superpuestas cuando el flujo lo permita.

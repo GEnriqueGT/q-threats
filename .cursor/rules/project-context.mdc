@@ -1,0 +1,12 @@
+---
+description: Contexto del proyecto Q Threats — stack, datos y APIs
+alwaysApply: true
+---
+
+# Q Threats
+
+- **Next.js 15** App Router, **React 19**, **Tailwind 4**, **Three.js** + **R3F** para visualizaciones.
+- **Datos:** viven en `lib/data.ts`; tipos en `lib/types.ts`. No hay DB: Route Handlers en `app/api/` devuelven JSON desde esos módulos.
+- **Lint:** `npm run lint` = `tsc --noEmit`.
+- **UI/copy:** español cuando sea texto de producto o metadatos para Guatemala.
+- **Cambios de datos:** actualizar `lib/data.ts` y, si aplica, rutas bajo `app/api/analysis/[threatId]` u otros handlers.

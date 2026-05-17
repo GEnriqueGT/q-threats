@@ -7,12 +7,7 @@ import { ThreatItem } from './ThreatItem';
 import { AnalysisNetworkView } from './AnalysisNetworkView';
 import { DepartmentModal } from './DepartmentModal';
 import { NeuralWorldCanvas } from './NeuralWorldCanvas';
-import type { MeshPhase } from './MorphingNeuralMesh';
-import {
-  MESH_GATHER_MS,
-  MESH_SPLIT_MS,
-  MESH_TRANSIT_MS,
-} from './MorphingNeuralMesh';
+import { useNeuralIntro } from '@/hooks/useNeuralIntro';
 import type { Threat, ThreatAnalysis } from '@/lib/types';
 
 type ViewState = 'dashboard' | 'analysis';
@@ -36,7 +31,7 @@ export function HomePage() {
   const [analysis, setAnalysis] = useState<ThreatAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [neuralPhase, setNeuralPhase] = useState<MeshPhase>('idle-left');
+  const neuralPhase = useNeuralIntro(view === 'analysis');
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [analysisPanelOpen, setAnalysisPanelOpen] = useState(true);
 
@@ -83,30 +78,6 @@ export function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (view !== 'analysis') {
-      setNeuralPhase('idle-left');
-      return;
-    }
-
-    setNeuralPhase('transit');
-    const t1 = setTimeout(() => setNeuralPhase('split'), MESH_TRANSIT_MS + 60);
-    const t2 = setTimeout(
-      () => setNeuralPhase('gather'),
-      MESH_TRANSIT_MS + MESH_SPLIT_MS + 80,
-    );
-    const t3 = setTimeout(
-      () => setNeuralPhase('ready'),
-      MESH_TRANSIT_MS + MESH_SPLIT_MS + MESH_GATHER_MS + 100,
-    );
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [view]);
-
   const openAnalysis = useCallback(async (threatId: string) => {
     setView('analysis');
     setAnalysis(null);
@@ -140,19 +111,7 @@ export function HomePage() {
         visible={view === 'dashboard' || view === 'analysis'}
       />
 
-      <header className="absolute top-8 left-0 right-0 z-50 flex flex-col items-center pointer-events-auto">
-        <h1
-          className="text-4xl font-bold tracking-[0.2em] uppercase text-white/90 drop-shadow-md cursor-pointer"
-          onClick={backToDashboard}
-        >
-          Q TRHEATS
-        </h1>
-        <p className="text-lg text-white/70 mt-2 font-light">
-          Poniendo las Amenazas al ojo publico
-        </p>
-      </header>
-
-      <main className="absolute inset-0 pt-28 pb-10 px-12 lg:px-16 flex items-stretch z-10 pointer-events-none">
+      <main className="absolute inset-0 pt-24 pb-10 px-12 lg:px-16 flex items-stretch z-10 pointer-events-none">
         <AnimatePresence mode="popLayout">
           {view === 'dashboard' && (
             <motion.div
@@ -160,7 +119,7 @@ export function HomePage() {
               initial={{ opacity: 1 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 1 }}
-              className="w-full max-w-[90rem] mx-auto flex items-stretch justify-between gap-8 lg:gap-12 pointer-events-none min-h-[calc(100vh-10rem)]"
+              className="w-full max-w-[90rem] mx-auto flex items-stretch justify-between gap-8 lg:gap-12 pointer-events-none min-h-[calc(100vh-9rem)]"
             >
               <motion.div className="flex-1 flex justify-center items-center min-h-0 pointer-events-auto py-4">
                 <MapGuatemala
@@ -208,7 +167,7 @@ export function HomePage() {
               className="absolute inset-0 pointer-events-none"
             >
               {analysisLoading || !analysis ? (
-                <motion.div className="absolute top-20 left-8 z-20 pointer-events-none">
+                <motion.div className="absolute top-24 left-8 z-20 pointer-events-none">
                   <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
                   <p className="text-white/50 text-sm mt-2">Cargando datos...</p>
                 </motion.div>

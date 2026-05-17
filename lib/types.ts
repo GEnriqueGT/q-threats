@@ -24,6 +24,10 @@ export interface AnalysisNode {
   /** Borde rojo (proveedor / alerta) */
   highlight?: boolean;
   role: 'institution' | 'supplier' | 'product' | 'acquisition';
+  /** Etiquetas Neo4j (grafo Relations). */
+  neo4jLabels?: string[];
+  /** Todas las propiedades del nodo en Neo4j, serializadas (panel de detalle). */
+  detailProps?: Record<string, string>;
 }
 
 export interface ThreatAnalysis {

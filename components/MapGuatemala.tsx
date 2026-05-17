@@ -10,7 +10,7 @@ interface MapGuatemalaProps {
   mapStageRef?: RefObject<HTMLDivElement | null>;
 }
 
-const STAGE_SIZE = 'min(calc(100vh - 11rem), 44vw, 42rem)';
+const STAGE_SIZE = 'min(calc(100vh - 9rem), 44vw, 42rem)';
 const DEPT_RATIO = 0.54;
 
 export function MapGuatemala({

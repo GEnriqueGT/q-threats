@@ -20,6 +20,8 @@ interface AnalysisNetworkViewProps {
   onBack: () => void;
   neuralPhase: MeshPhase;
   onPanelToggle?: (isOpen: boolean) => void;
+  /** Titulo opcional sobre el lienzo (p. ej. "Relations"). */
+  heading?: string;
 }
 
 export function AnalysisNetworkView({
@@ -27,6 +29,7 @@ export function AnalysisNetworkView({
   onBack,
   neuralPhase,
   onPanelToggle,
+  heading = 'Analisis',
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragIdRef = useRef<string | null>(null);
@@ -322,8 +325,8 @@ export function AnalysisNetworkView({
       onPointerLeave={onPointerUp}
     >
       {/* Header */}
-      <div className="absolute top-20 left-8 z-20 pointer-events-none">
-        <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
+      <div className="absolute top-24 left-8 z-20 pointer-events-none">
+        <h2 className="text-3xl font-bold tracking-wider text-white">{heading}</h2>
       </div>
 
       {/* Nodos alrededor de la esfera */}

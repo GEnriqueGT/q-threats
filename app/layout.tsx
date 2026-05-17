@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { MainNav } from '@/components/MainNav';
 
 export const metadata: Metadata = {
   title: 'Q Threats',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body className="relative">
+        <MainNav />
+        {children}
+      </body>
     </html>
   );
 }
