@@ -1,38 +1,28 @@
-import type { AnalysisNode } from './types';
+/** Layout compartido entre el canvas 3D y la vista de análisis orbital. */
 
-export interface LayoutPoint {
-  x: number;
-  y: number;
+export const PANEL_WIDTH_MAX = 400;
+export const PANEL_WIDTH_VW = 0.4;
+export const PANEL_MARGIN_RIGHT = 24;
+/** Espacio reservado para botones circulares (izquierda). */
+export const VIZ_LEFT_GUTTER = 148;
+
+export function panelWidthPx(viewportW: number): number {
+  return Math.min(PANEL_WIDTH_MAX, viewportW * PANEL_WIDTH_VW);
 }
 
-/** Posiciona entidades alrededor de la tarjeta de compra (mockup) */
-export function layoutNodesAroundCompra(
-  hub: LayoutPoint,
-  nodes: AnalysisNode[],
-  size: { w: number; h: number },
-): Record<string, LayoutPoint> {
-  const spreadX = Math.min(size.w, size.h) * 0.28;
-  const spreadY = Math.min(size.w, size.h) * 0.22;
-  const out: Record<string, LayoutPoint> = {};
+export function computeSphereLayout(
+  width: number,
+  height: number,
+  panelOpen: boolean,
+): { centerX: number; centerY: number; circleRadius: number } {
+  const panelW = panelWidthPx(width);
+  const vizLeft = VIZ_LEFT_GUTTER;
+  const vizRight = panelOpen ? width - panelW - PANEL_MARGIN_RIGHT : width - 20;
+  const vizWidth = Math.max(280, vizRight - vizLeft);
 
-  for (const node of nodes) {
-    switch (node.role) {
-      case 'institution':
-        out[node.id] = { x: hub.x - spreadX, y: hub.y };
-        break;
-      case 'supplier':
-        out[node.id] = { x: hub.x + spreadX, y: hub.y - spreadY * 0.35 };
-        break;
-      case 'product':
-        out[node.id] = { x: hub.x + spreadX * 0.15, y: hub.y + spreadY };
-        break;
-      default:
-        out[node.id] = {
-          x: hub.x + spreadX * 0.5,
-          y: hub.y + spreadY * 0.5,
-        };
-    }
-  }
+  const centerX = vizLeft + vizWidth / 2;
+  const centerY = height * 0.5;
+  const circleRadius = Math.min(vizWidth * 0.4, height * 0.36, 340);
 
-  return out;
+  return { centerX, centerY, circleRadius };
 }

@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ArrowLeft } from 'lucide-react';
+import { AnalysisDetailPanel } from './AnalysisDetailPanel';
+import { AnalysisCenterHub } from './AnalysisCenterHub';
+import { GraphNodeIcon } from './GraphNodeIcon';
+import { ShareAnalysisButton } from './ShareAnalysisButton';
 import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
+import { computeSphereLayout } from '@/lib/analysisLayout';
 import type { MeshPhase } from './MorphingNeuralMesh';
 import { MESH_GATHER_MS } from './MorphingNeuralMesh';
 
@@ -20,16 +26,22 @@ interface AnalysisNetworkViewProps {
   onBack: () => void;
   neuralPhase: MeshPhase;
   onPanelToggle?: (isOpen: boolean) => void;
-  /** Titulo opcional sobre el lienzo (p. ej. "Relations"). */
-  heading?: string;
+  /** Centro de la esfera en coordenadas de viewport (para alinear el mesh 3D). */
+  onSphereCenterChange?: (center: { x: number; y: number }) => void;
+  /** URL absoluta para compartir (deeplink). */
+  shareUrl?: string;
 }
+
+const PANEL_TOP = '6.5rem';
+const PANEL_BOTTOM = '4.5rem';
 
 export function AnalysisNetworkView({
   analysis,
   onBack,
   neuralPhase,
   onPanelToggle,
-  heading = 'Analisis',
+  onSphereCenterChange,
+  shareUrl,
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragIdRef = useRef<string | null>(null);
@@ -41,25 +53,34 @@ export function AnalysisNetworkView({
   const nodesRef = useRef<SimNode[]>([]);
   const [panelOpen, setPanelOpen] = useState(true);
 
-  const [selectedId, setSelectedId] = useState<string>('');
+  const [selectedId, setSelectedId] = useState<string>(
+    () => (analysis.legislative ? 'acquisition' : ''),
+  );
 
   const graphNodes = useMemo(
     () => analysis.nodes.filter((n) => n.role !== 'acquisition'),
     [analysis.nodes],
   );
 
-  // Centro de la esfera - a la izquierda cuando el panel esta abierto, centrado cuando esta cerrado
-  const sphereCenterX = useMemo(() => {
-    if (panelOpen) {
-      return size.w * 0.32;
-    }
-    return size.w * 0.5;
-  }, [size.w, panelOpen]);
-  
-  const sphereCenterY = useMemo(() => size.h * 0.48, [size.h]);
-  
-  // Radio del circulo donde van los nodos
-  const circleRadius = useMemo(() => Math.min(size.w * 0.28, size.h * 0.36), [size]);
+  const sphereLayout = useMemo(
+    () => computeSphereLayout(size.w, size.h, panelOpen),
+    [size.w, size.h, panelOpen],
+  );
+  const sphereCenterX = sphereLayout.centerX;
+  const sphereCenterY = sphereLayout.centerY;
+  const circleRadius = sphereLayout.circleRadius;
+
+  const leg = analysis.legislative;
+
+  const hubDiameter = useMemo(
+    () => Math.min(188, Math.max(132, circleRadius * 1.08)),
+    [circleRadius],
+  );
+
+  const handleCenterSelect = useCallback(() => {
+    setSelectedId('acquisition');
+    setPanelOpen(true);
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -76,6 +97,27 @@ export function AnalysisNetworkView({
   useEffect(() => {
     onPanelToggle?.(panelOpen);
   }, [panelOpen, onPanelToggle]);
+
+  // Sincronizar centro 3D con nodos orbitales (coords de viewport)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !onSphereCenterChange) return;
+    const report = () => {
+      const rect = el.getBoundingClientRect();
+      onSphereCenterChange({
+        x: rect.left + sphereCenterX,
+        y: rect.top + sphereCenterY,
+      });
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    window.addEventListener('scroll', report, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', report);
+    };
+  }, [sphereCenterX, sphereCenterY, onSphereCenterChange]);
 
   // Inicializar nodos en la circunferencia alrededor de la esfera
   useEffect(() => {
@@ -101,10 +143,13 @@ export function AnalysisNetworkView({
 
     setNodes(initial);
     nodesRef.current = initial;
-    if (initial.length > 0 && !selectedId) {
+    if (initial.length > 0 && !selectedId && !analysis.legislative) {
       setSelectedId(initial[0].id);
     }
-  }, [neuralPhase, size, graphNodes, circleRadius, sphereCenterX, sphereCenterY, selectedId]);
+    if (analysis.legislative && !selectedId) {
+      setSelectedId('acquisition');
+    }
+  }, [neuralPhase, size, graphNodes, circleRadius, sphereCenterX, sphereCenterY, selectedId, analysis.legislative]);
 
   // Actualizar posiciones cuando cambia el centro (panel abre/cierra)
   useEffect(() => {
@@ -290,7 +335,6 @@ export function AnalysisNetworkView({
     handleDragEnd();
   }, [handleDragEnd]);
 
-  const selectedNode = nodes.find((n) => n.id === selectedId);
   const showNodes = neuralPhase === 'gather' || neuralPhase === 'ready';
 
   const [reveal, setReveal] = useState(0);
@@ -324,16 +368,26 @@ export function AnalysisNetworkView({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
     >
-      {/* Header */}
-      <div className="absolute top-24 left-8 z-20 pointer-events-none">
-        <h2 className="text-3xl font-bold tracking-wider text-white">{heading}</h2>
+      {/* Acciones: volver + compartir */}
+      <div className="absolute top-24 left-8 z-30 flex items-center gap-4 pointer-events-none">
+        <button
+          type="button"
+          onClick={onBack}
+          title="Volver al mapa"
+          aria-label="Volver al mapa"
+          className="w-16 h-16 rounded-full flex items-center justify-center bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/15 hover:border-white/30 shadow-lg transition pointer-events-auto"
+        >
+          <ArrowLeft className="w-7 h-7" aria-hidden />
+        </button>
+        {shareUrl && <ShareAnalysisButton url={shareUrl} variant="circle" />}
       </div>
 
       {/* Nodos alrededor de la esfera */}
       {showNodes &&
         nodes.map((node) => {
           const active = selectedId === node.id;
-          const sizePx = node.role === 'institution' ? 90 : 78;
+          const sizePx =
+            node.entityKind === 'group' || node.entityKind === 'institution' ? 68 : 58;
           return (
             <div
               key={node.id}
@@ -367,36 +421,60 @@ export function AnalysisNetworkView({
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/70 text-xs text-center p-1">
-                    {node.title}
-                  </div>
+                  <motion.div className="w-full h-full bg-white/10 flex flex-col items-center justify-center gap-0.5 p-1">
+                    <GraphNodeIcon kind={node.entityKind} highlight={node.highlight} />
+                    <span className="text-[8px] text-white/60 text-center leading-tight line-clamp-2 px-0.5">
+                      {node.title}
+                    </span>
+                  </motion.div>
                 )}
               </div>
-              <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-white/70 whitespace-nowrap max-w-[100px] truncate">
+              <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-white/65 whitespace-nowrap max-w-[88px] truncate">
                 {node.title}
               </span>
             </div>
           );
         })}
 
-      {/* Panel lateral derecho - glassmorphism scrolleable */}
+      {/* Hub central: iniciativa → resumen en panel */}
+      {showNodes && (
+        <AnalysisCenterHub
+          x={sphereCenterX}
+          y={sphereCenterY}
+          diameter={hubDiameter * nodeRevealClamped}
+          title={analysis.acquisition.title}
+          subtitle={
+            leg?.iniciativaId
+              ? `Iniciativa ${leg.iniciativaId}${leg.estado ? ` · ${leg.estado}` : ''}`
+              : analysis.acquisition.institution
+          }
+          legislative={leg}
+          active={selectedId === 'acquisition'}
+          visible={nodeRevealClamped > 0.4}
+          onClick={handleCenterSelect}
+        />
+      )}
+
+      {/* Panel flotante derecho */}
       <AnimatePresence>
         {panelOpen && nodeRevealClamped > 0.5 && (
           <motion.div
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="absolute right-0 top-0 bottom-0 w-[420px] max-w-[45%] z-30 pointer-events-auto"
+            initial={{ x: 32, opacity: 0, scale: 0.97 }}
+            animate={{ x: 0, opacity: 1, scale: 1 }}
+            exit={{ x: 32, opacity: 0, scale: 0.97 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+            className="absolute right-5 z-30 w-[min(400px,40vw)] pointer-events-auto"
+            style={{ top: PANEL_TOP, bottom: PANEL_BOTTOM }}
           >
-            <div className="h-full flex flex-col bg-white/5 backdrop-blur-xl border-l border-white/10">
-              {/* Header del panel */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-                <h3 className="text-lg font-semibold text-white">Detalles del Analisis</h3>
+            <div className="h-full flex flex-col rounded-2xl overflow-hidden bg-white/[0.06] backdrop-blur-2xl border border-white/15 shadow-[0_8px_40px_rgba(0,0,0,0.45)]">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 gap-2 shrink-0">
+                <h3 className="text-base font-semibold text-white truncate">Detalles</h3>
                 <button
                   type="button"
                   onClick={() => setPanelOpen(false)}
-                  className="p-2 rounded-lg hover:bg-white/10 transition text-white/60 hover:text-white"
+                  title="Ocultar panel"
+                  aria-label="Ocultar panel"
+                  className="p-2 rounded-lg hover:bg-white/10 transition text-white/60 hover:text-white shrink-0"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -404,161 +482,38 @@ export function AnalysisNetworkView({
                 </button>
               </div>
 
-              {/* Contenido scrolleable */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Info de la compra */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-teal-400 text-xs font-semibold uppercase tracking-wider">Adquisicion</span>
-                  </div>
-                  <h4 className="text-xl font-bold text-white">{analysis.acquisition.title}</h4>
-                  <p className="text-white/60 text-sm">{analysis.acquisition.summary}</p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-teal-300 font-semibold">
-                      {analysis.acquisition.amount || 'Q2,000,000'}
-                    </span>
-                    <span className="text-white/40">|</span>
-                    <span className="text-white/50">
-                      {analysis.acquisition.date || '15 Feb 2026'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-px bg-white/10" />
-
-                {/* Entidad seleccionada */}
-                {selectedNode && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      {selectedNode.imageUrl && (
-                        <div className={`w-12 h-12 rounded-lg overflow-hidden border ${selectedNode.highlight ? 'border-red-500' : 'border-white/20'}`}>
-                          <img
-                            src={selectedNode.imageUrl}
-                            alt={selectedNode.title}
-                            className={`w-full h-full object-cover ${selectedNode.role === 'institution' ? 'bg-white p-1 object-contain' : ''}`}
-                          />
-                        </div>
-                      )}
-                      <div>
-                        <h5 className="text-white font-semibold">{selectedNode.title}</h5>
-                        <span className={`text-xs ${selectedNode.highlight ? 'text-red-400' : 'text-teal-400/80'}`}>
-                          {selectedNode.role === 'institution' ? 'Entidad' : selectedNode.role === 'supplier' ? 'Proveedor' : 'Producto'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-white/70 text-sm leading-relaxed">{selectedNode.description}</p>
-
-                    {selectedNode.risks.length > 0 && (
-                      <div className="space-y-2">
-                        <h6 className="text-white font-semibold text-sm">Riesgos identificados:</h6>
-                        <ul className="space-y-2">
-                          {selectedNode.risks.map((risk, i) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-white/80">
-                              <span className="text-red-400 mt-1">•</span>
-                              <span>{risk}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {selectedNode.sources.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-xs text-white/50 font-semibold">Fuentes:</span>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedNode.sources.map((s) =>
-                            s.url ? (
-                              <a
-                                key={s.label}
-                                href={s.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80 hover:bg-white/10 transition"
-                              >
-                                {s.label}
-                              </a>
-                            ) : (
-                              <span
-                                key={s.label}
-                                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80"
-                              >
-                                {s.label}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="h-px bg-white/10" />
-
-                {/* Lista de todas las entidades */}
-                <div className="space-y-3">
-                  <h6 className="text-white/50 text-xs font-semibold uppercase tracking-wider">Entidades involucradas</h6>
-                  <div className="space-y-2">
-                    {graphNodes.map((node) => (
-                      <button
-                        key={node.id}
-                        type="button"
-                        onClick={() => setSelectedId(node.id)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition text-left ${
-                          selectedId === node.id ? 'bg-teal-500/20 border border-teal-500/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
-                        }`}
-                      >
-                        {node.imageUrl && (
-                          <div className={`w-10 h-10 rounded-lg overflow-hidden border ${node.highlight ? 'border-red-500' : 'border-white/20'}`}>
-                            <img
-                              src={node.imageUrl}
-                              alt={node.title}
-                              className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-1 object-contain' : ''}`}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-medium truncate">{node.title}</p>
-                          <p className="text-white/50 text-xs truncate">{node.role === 'institution' ? 'Entidad' : node.role === 'supplier' ? 'Proveedor' : 'Producto'}</p>
-                        </div>
-                        {node.highlight && (
-                          <span className="w-2 h-2 rounded-full bg-red-500" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                <AnalysisDetailPanel
+                  analysis={analysis}
+                  graphNodes={graphNodes}
+                  selectedId={selectedId}
+                  onSelectId={(id) => {
+                    setSelectedId(id);
+                    setPanelOpen(true);
+                  }}
+                />
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Boton para abrir panel cuando esta cerrado */}
+      {/* Abrir panel cuando está cerrado */}
       {!panelOpen && nodeRevealClamped > 0.5 && (
         <motion.button
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           type="button"
           onClick={() => setPanelOpen(true)}
-          className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 text-white hover:bg-white/20 transition pointer-events-auto"
+          title="Mostrar detalles"
+          aria-label="Mostrar detalles"
+          className="absolute right-6 z-30 p-3.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 shadow-lg transition pointer-events-auto top-1/2 -translate-y-1/2"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </motion.button>
       )}
-
-      {/* Boton Volver */}
-      <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 md:bottom-28">
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-8 py-2.5 rounded-full bg-white/5 backdrop-blur-lg border border-white/20 text-white hover:bg-white/10 transition pointer-events-auto"
-        >
-          Volver
-        </button>
-      </div>
     </motion.div>
   );
 }

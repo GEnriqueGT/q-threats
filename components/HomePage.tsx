@@ -1,13 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapGuatemala } from './MapGuatemala';
 import { ThreatItem } from './ThreatItem';
+import { LegislationSearch } from './LegislationSearch';
 import { AnalysisNetworkView } from './AnalysisNetworkView';
 import { DepartmentModal } from './DepartmentModal';
 import { NeuralWorldCanvas } from './NeuralWorldCanvas';
 import { useNeuralIntro } from '@/hooks/useNeuralIntro';
+import {
+  analysisUrlFromThreatAnalysis,
+  buildAnalysisShareUrl,
+  parseAnalysisUrlParams,
+} from '@/lib/analysisUrl';
 import type { Threat, ThreatAnalysis } from '@/lib/types';
 
 type ViewState = 'dashboard' | 'analysis';
@@ -20,8 +27,12 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const mainRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
+  const deepLinkHandled = useRef(false);
+
   const [sphereFocus, setSphereFocus] = useState<{ x: number; y: number } | null>(null);
   const [view, setView] = useState<ViewState>('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,11 +40,28 @@ export function HomePage() {
   const [threats, setThreats] = useState<Threat[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<ThreatAnalysis | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [legislationSearchLoading, setLegislationSearchLoading] = useState(false);
+  const [legislationSearchError, setLegislationSearchError] = useState<string | null>(null);
   const neuralPhase = useNeuralIntro(view === 'analysis');
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [analysisPanelOpen, setAnalysisPanelOpen] = useState(true);
+  const [analysisSphereCenter, setAnalysisSphereCenter] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
+  const syncAnalysisUrl = useCallback(
+    (params: ReturnType<typeof parseAnalysisUrlParams>) => {
+      const next = new URLSearchParams();
+      if (params?.type === 'iniciativa') next.set('iniciativa', params.id);
+      if (params?.type === 'amenaza') next.set('amenaza', params.id);
+      const q = next.toString();
+      router.replace(q ? `/?${q}` : '/', { scroll: false });
+    },
+    [router],
+  );
 
   const updateSphereFocus = useCallback(() => {
     const root = mainRef.current;
@@ -78,25 +106,82 @@ export function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const openAnalysis = useCallback(async (threatId: string) => {
-    setView('analysis');
-    setAnalysis(null);
-    setAnalysisLoading(true);
-    try {
-      const data = await fetchJson<ThreatAnalysis>(`/api/analysis/${threatId}`);
-      setAnalysis(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }, []);
+  const openAnalysis = useCallback(
+    async (threatId: string, options?: { skipUrl?: boolean }) => {
+      setLegislationSearchError(null);
+      setView('analysis');
+      setAnalysis(null);
+      setShareUrl(null);
+      setAnalysisLoading(true);
+      if (!options?.skipUrl) syncAnalysisUrl({ type: 'amenaza', id: threatId });
+      try {
+        const data = await fetchJson<ThreatAnalysis>(`/api/analysis/${threatId}`);
+        setAnalysis(data);
+        setShareUrl(buildAnalysisShareUrl(analysisUrlFromThreatAnalysis(data)));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setAnalysisLoading(false);
+      }
+    },
+    [syncAnalysisUrl],
+  );
+
+  const searchLegislation = useCallback(
+    async (referenceId: string, options?: { skipUrl?: boolean }) => {
+      setLegislationSearchError(null);
+      setView('analysis');
+      setAnalysis(null);
+      setShareUrl(null);
+      setLegislationSearchLoading(true);
+      setAnalysisLoading(true);
+      if (!options?.skipUrl) syncAnalysisUrl({ type: 'iniciativa', id: referenceId });
+      try {
+        const encoded = encodeURIComponent(referenceId);
+        const res = await fetch(`/api/legislation/${encoded}`);
+        const json = (await res.json()) as { data?: ThreatAnalysis; error?: string };
+        if (!res.ok || !json.data) {
+          setLegislationSearchError(json.error ?? 'No se pudo cargar el análisis.');
+          setView('dashboard');
+          syncAnalysisUrl(null);
+          return;
+        }
+        setAnalysis(json.data);
+        setShareUrl(buildAnalysisShareUrl(analysisUrlFromThreatAnalysis(json.data)));
+      } catch (err) {
+        console.error(err);
+        setLegislationSearchError('Error de conexión al buscar la iniciativa.');
+        setView('dashboard');
+        syncAnalysisUrl(null);
+      } finally {
+        setLegislationSearchLoading(false);
+        setAnalysisLoading(false);
+      }
+    },
+    [syncAnalysisUrl],
+  );
 
   const backToDashboard = useCallback(() => {
     setView('dashboard');
     setAnalysis(null);
+    setShareUrl(null);
     setAnalysisPanelOpen(true);
-  }, []);
+    setAnalysisSphereCenter(null);
+    setLegislationSearchError(null);
+    syncAnalysisUrl(null);
+  }, [syncAnalysisUrl]);
+
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    const parsed = parseAnalysisUrlParams(searchParams);
+    if (!parsed) return;
+    deepLinkHandled.current = true;
+    if (parsed.type === 'iniciativa') {
+      searchLegislation(parsed.id, { skipUrl: true });
+    } else {
+      openAnalysis(parsed.id, { skipUrl: true });
+    }
+  }, [searchParams, searchLegislation, openAnalysis]);
 
   return (
     <div
@@ -106,9 +191,10 @@ export function HomePage() {
       <NeuralWorldCanvas
         phase={neuralPhase}
         size={size}
-        sphereFocus={sphereFocus}
+        sphereFocus={view === 'analysis' ? analysisSphereCenter : sphereFocus}
         analysisPanelOpen={analysisPanelOpen}
         visible={view === 'dashboard' || view === 'analysis'}
+        meshScale={view === 'analysis' ? 0.96 : 1}
       />
 
       <main className="absolute inset-0 z-10 flex items-stretch px-12 pb-[max(6rem,calc(env(safe-area-inset-bottom,0px)+5rem))] pt-24 pointer-events-none lg:px-16">
@@ -136,7 +222,12 @@ export function HomePage() {
                 transition={{ duration: 0.35 }}
                 className="flex-1 flex flex-col justify-center gap-6 items-end pointer-events-auto py-4"
               >
-                <div className="w-full max-w-md">
+                <motion.div className="w-full max-w-md">
+                  <LegislationSearch
+                    onSearch={searchLegislation}
+                    loading={legislationSearchLoading}
+                    error={legislationSearchError}
+                  />
                   <h3 className="text-xl font-medium mb-6 text-white/90">
                     Ultimas actividades sospechosas
                   </h3>
@@ -153,7 +244,7 @@ export function HomePage() {
                       ))}
                     </div>
                   )}
-                </div>
+                </motion.div>
               </motion.div>
             </motion.div>
           )}
@@ -167,16 +258,17 @@ export function HomePage() {
               className="absolute inset-0 pointer-events-none"
             >
               {analysisLoading || !analysis ? (
-                <motion.div className="absolute top-24 left-8 z-20 pointer-events-none">
-                  <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
-                  <p className="text-white/50 text-sm mt-2">Cargando datos...</p>
-                </motion.div>
+                <div className="absolute top-24 left-8 z-20 pointer-events-none">
+                  <p className="text-white/50 text-sm">Cargando datos...</p>
+                </div>
               ) : (
                 <AnalysisNetworkView
                   analysis={analysis}
                   onBack={backToDashboard}
                   neuralPhase={neuralPhase}
                   onPanelToggle={setAnalysisPanelOpen}
+                  onSphereCenterChange={setAnalysisSphereCenter}
+                  shareUrl={shareUrl ?? undefined}
                 />
               )}
             </motion.div>

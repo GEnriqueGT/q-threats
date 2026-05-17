@@ -15,6 +15,7 @@ interface NeuralWorldCanvasProps {
   visible: boolean;
   sphereFocus?: { x: number; y: number } | null;
   analysisPanelOpen?: boolean;
+  meshScale?: number;
 }
 
 export function NeuralWorldCanvas({
@@ -23,6 +24,7 @@ export function NeuralWorldCanvas({
   visible,
   sphereFocus,
   analysisPanelOpen = true,
+  meshScale = 1,
 }: NeuralWorldCanvasProps) {
   if (!visible) return null;
 
@@ -42,6 +44,7 @@ export function NeuralWorldCanvas({
           size={size}
           sphereFocus={sphereFocus}
           analysisPanelOpen={analysisPanelOpen}
+          meshScale={meshScale}
         />
       </Canvas>
     </div>

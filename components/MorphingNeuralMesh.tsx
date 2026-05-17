@@ -21,6 +21,8 @@ interface MorphingNeuralMeshProps {
   size: { w: number; h: number };
   sphereFocus?: { x: number; y: number } | null;
   analysisPanelOpen?: boolean;
+  /** Escala visual en vista de análisis (esfera más compacta). */
+  meshScale?: number;
 }
 
 export const MESH_TRANSIT_MS = 850;
@@ -54,6 +56,7 @@ export function MorphingNeuralMesh({
   size,
   sphereFocus,
   analysisPanelOpen = true,
+  meshScale = 1,
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -80,6 +83,7 @@ export function MorphingNeuralMesh({
   const linesGeoRef = useRef<THREE.BufferGeometry>(null);
   const phaseStart = useRef(performance.now());
   const prevPhase = useRef<MeshPhase>(phase);
+  const scaleTarget = useRef(new THREE.Vector3(1, 1, 1));
 
   useEffect(() => {
     if (prevPhase.current !== phase) {
@@ -115,13 +119,19 @@ export function MorphingNeuralMesh({
 
     const focusPx = sphereFocus ?? { x: size.w * 0.25, y: size.h * 0.46 };
     _focusWorld.copy(screenToWorld(focusPx.x, focusPx.y, w, h, camera));
-    
-    // Centro de analisis: a la izquierda si el panel esta abierto, centrado si esta cerrado
-    const analysisCenterX = analysisPanelOpen ? size.w * 0.32 : size.w * 0.5;
-    const analysisCenterY = size.h * 0.48;
-    const _analysisWorld = screenToWorld(analysisCenterX, analysisCenterY, w, h, camera);
-    
-    _centerWorld.copy(_analysisWorld);
+
+    // En análisis: mismo centro que reporta AnalysisNetworkView (coords de viewport)
+    _centerWorld.copy(
+      sphereFocus
+        ? screenToWorld(sphereFocus.x, sphereFocus.y, w, h, camera)
+        : screenToWorld(
+            analysisPanelOpen ? size.w * 0.4 : size.w * 0.5,
+            size.h * 0.5,
+            w,
+            h,
+            camera,
+          ),
+    );
 
     if (groupRef.current) {
       if (phase === 'idle-left') {
@@ -135,6 +145,10 @@ export function MorphingNeuralMesh({
         _groupPos.lerp(_centerWorld, lerpFactor);
       }
       groupRef.current.position.copy(_groupPos);
+
+      const targetScale = isDashboard ? 1 : meshScale;
+      scaleTarget.current.set(targetScale, targetScale, targetScale);
+      groupRef.current.scale.lerp(scaleTarget.current, isDashboard ? 1 : 0.06);
 
       if (isDashboard) {
         groupRef.current.rotation.y += 0.0008;
@@ -177,7 +191,7 @@ export function MorphingNeuralMesh({
         </bufferGeometry>
         <pointsMaterial
           map={pointTexture}
-          size={isDashboard ? 0.052 : 0.055}
+          size={isDashboard ? 0.052 : 0.048 * meshScale}
           color="#9eb8ae"
           transparent
           opacity={isDashboard ? 0.72 : 0.75}
