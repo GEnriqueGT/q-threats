@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
 import { layoutNodesInRow } from '@/lib/analysisLayout';
@@ -26,6 +26,8 @@ export function AnalysisNetworkView({
   onAnchorsChange,
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [size, setSize] = useState({ w: 1000, h: 600 });
   const [nodes, setNodes] = useState<SimNode[]>([]);
@@ -79,21 +81,82 @@ export function AnalysisNetworkView({
 
   const meshAnchors = useMemo((): MeshAnchor[] => {
     const list: MeshAnchor[] = [];
-    for (const n of graphNodes) {
-      const p = rowLayout[n.id];
+    for (const n of nodes) {
       list.push({
         id: n.id,
-        x: p?.x ?? hubPos.x,
-        y: p?.y ?? hubPos.y,
+        x: n.x,
+        y: n.y,
         weight: 1.5,
       });
     }
     return list;
-  }, [hubPos, graphNodes, rowLayout]);
+  }, [nodes]);
 
   useEffect(() => {
     onAnchorsChange(meshAnchors);
   }, [meshAnchors, onAnchorsChange]);
+
+  // Drag handlers
+  const handleDragStart = useCallback((id: string, clientX: number, clientY: number) => {
+    const node = nodes.find((n) => n.id === id);
+    if (!node) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragIdRef.current = id;
+    dragOffsetRef.current = {
+      x: clientX - rect.left - node.x,
+      y: clientY - rect.top - node.y,
+    };
+  }, [nodes]);
+
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!dragIdRef.current) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const pad = 60;
+    const newX = Math.max(pad, Math.min(size.w - pad, clientX - rect.left - dragOffsetRef.current.x));
+    const newY = Math.max(pad, Math.min(size.h - pad, clientY - rect.top - dragOffsetRef.current.y));
+    setNodes((prev) =>
+      prev.map((n) => (n.id === dragIdRef.current ? { ...n, x: newX, y: newY } : n))
+    );
+  }, [size]);
+
+  const handleDragEnd = useCallback(() => {
+    dragIdRef.current = null;
+  }, []);
+
+  // Mouse events
+  const onMouseDown = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    handleDragStart(id, e.clientX, e.clientY);
+  }, [handleDragStart]);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (dragIdRef.current) {
+      handleDragMove(e.clientX, e.clientY);
+    }
+  }, [handleDragMove]);
+
+  const onMouseUp = useCallback(() => {
+    handleDragEnd();
+  }, [handleDragEnd]);
+
+  // Touch events
+  const onTouchStart = useCallback((id: string, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    handleDragStart(id, touch.clientX, touch.clientY);
+  }, [handleDragStart]);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (dragIdRef.current) {
+      const touch = e.touches[0];
+      handleDragMove(touch.clientX, touch.clientY);
+    }
+  }, [handleDragMove]);
+
+  const onTouchEnd = useCallback(() => {
+    handleDragEnd();
+  }, [handleDragEnd]);
 
   const selectedNode = graphNodes.find((n) => n.id === selectedId);
   const showNodes = neuralPhase === 'gather' || neuralPhase === 'ready';
@@ -125,6 +188,11 @@ export function AnalysisNetworkView({
     <motion.div
       ref={containerRef}
       className="absolute inset-0 overflow-hidden pointer-events-auto"
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       <div className="absolute top-20 left-8 z-20 pointer-events-none">
         <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
@@ -137,7 +205,7 @@ export function AnalysisNetworkView({
           return (
             <div
               key={node.id}
-              className="absolute z-10"
+              className="absolute z-10 select-none"
               style={{
                 left: node.x,
                 top: node.y,
@@ -147,8 +215,11 @@ export function AnalysisNetworkView({
                 marginTop: -sizePx / 2,
                 opacity: nodeRevealClamped,
                 transform: `scale(${0.5 + nodeRevealClamped * 0.5})`,
-                transition: 'opacity 0.35s ease-out',
+                transition: dragIdRef.current === node.id ? 'none' : 'opacity 0.35s ease-out',
+                cursor: 'grab',
               }}
+              onMouseDown={(e) => onMouseDown(node.id, e)}
+              onTouchStart={(e) => onTouchStart(node.id, e)}
             >
               <button
                 type="button"
