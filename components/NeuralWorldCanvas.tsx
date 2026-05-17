@@ -2,8 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import dynamic from 'next/dynamic';
-import type { ConnectorEdge } from '@/lib/neuralConnectors';
-import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
+import type { MeshPhase } from './MorphingNeuralMesh';
 
 const MorphingNeuralMesh = dynamic(
   () => import('./MorphingNeuralMesh').then((m) => m.MorphingNeuralMesh),
@@ -13,24 +12,24 @@ const MorphingNeuralMesh = dynamic(
 interface NeuralWorldCanvasProps {
   phase: MeshPhase;
   size: { w: number; h: number };
-  anchors: MeshAnchor[];
   visible: boolean;
   sphereFocus?: { x: number; y: number } | null;
-  connectorEdges?: ConnectorEdge[];
+  analysisPanelOpen?: boolean;
 }
 
 export function NeuralWorldCanvas({
   phase,
   size,
-  anchors,
   visible,
   sphereFocus,
-  connectorEdges = [],
+  analysisPanelOpen = true,
 }: NeuralWorldCanvasProps) {
   if (!visible) return null;
 
+  const isDashboard = phase === 'idle-left';
+
   return (
-    <div className="absolute inset-0 z-[2] pointer-events-none">
+    <div className="absolute inset-0 z-[2] pointer-events-auto" style={{ pointerEvents: isDashboard ? 'auto' : 'none' }}>
       <Canvas
         className="!w-full !h-full"
         camera={{ position: [0, 0, 5.5], fov: 48 }}
@@ -41,9 +40,8 @@ export function NeuralWorldCanvas({
         <MorphingNeuralMesh
           phase={phase}
           size={size}
-          anchors={anchors}
           sphereFocus={sphereFocus}
-          connectorEdges={connectorEdges}
+          analysisPanelOpen={analysisPanelOpen}
         />
       </Canvas>
     </div>

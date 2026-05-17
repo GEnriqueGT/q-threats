@@ -7,7 +7,7 @@ import { ThreatItem } from './ThreatItem';
 import { AnalysisNetworkView } from './AnalysisNetworkView';
 import { DepartmentModal } from './DepartmentModal';
 import { NeuralWorldCanvas } from './NeuralWorldCanvas';
-import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
+import type { MeshPhase } from './MorphingNeuralMesh';
 import {
   MESH_GATHER_MS,
   MESH_SPLIT_MS,
@@ -24,10 +24,6 @@ async function fetchJson<T>(url: string): Promise<T> {
   return json.data as T;
 }
 
-const DEFAULT_ANCHORS = (w: number, h: number): MeshAnchor[] => [
-  { id: 'acquisition', x: w * 0.5, y: h * 0.48, weight: 3.2 },
-];
-
 export function HomePage() {
   const mainRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
@@ -42,9 +38,7 @@ export function HomePage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [neuralPhase, setNeuralPhase] = useState<MeshPhase>('idle-left');
   const [size, setSize] = useState({ w: 1200, h: 800 });
-  const [meshAnchors, setMeshAnchors] = useState<MeshAnchor[]>(() =>
-    DEFAULT_ANCHORS(1200, 800),
-  );
+  const [analysisPanelOpen, setAnalysisPanelOpen] = useState(true);
 
   const updateSphereFocus = useCallback(() => {
     const root = mainRef.current;
@@ -65,11 +59,6 @@ export function HomePage() {
       const { width, height } = entry.contentRect;
       if (width > 0 && height > 0) {
         setSize({ w: width, h: height });
-        setMeshAnchors((prev) =>
-          prev.length === 1 && prev[0].id === 'acquisition'
-            ? DEFAULT_ANCHORS(width, height)
-            : prev,
-        );
         updateSphereFocus();
       }
     });
@@ -135,11 +124,7 @@ export function HomePage() {
   const backToDashboard = useCallback(() => {
     setView('dashboard');
     setAnalysis(null);
-    setMeshAnchors(DEFAULT_ANCHORS(size.w, size.h));
-  }, [size.w, size.h]);
-
-  const handleAnchorsChange = useCallback((anchors: MeshAnchor[]) => {
-    setMeshAnchors(anchors);
+    setAnalysisPanelOpen(true);
   }, []);
 
   return (
@@ -150,9 +135,8 @@ export function HomePage() {
       <NeuralWorldCanvas
         phase={neuralPhase}
         size={size}
-        anchors={meshAnchors}
         sphereFocus={sphereFocus}
-        connectorEdges={analysis?.edges ?? []}
+        analysisPanelOpen={analysisPanelOpen}
         visible={view === 'dashboard' || view === 'analysis'}
       />
 
@@ -233,7 +217,7 @@ export function HomePage() {
                   analysis={analysis}
                   onBack={backToDashboard}
                   neuralPhase={neuralPhase}
-                  onAnchorsChange={handleAnchorsChange}
+                  onPanelToggle={setAnalysisPanelOpen}
                 />
               )}
             </motion.div>

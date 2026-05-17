@@ -4,12 +4,6 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { createNeuralMeshGeometry, easeInOutCubic } from '@/lib/neuralMeshGeometry';
-import {
-  BridgeMeshSimulator,
-  buildSplitToBridges,
-  createBridgeAnalysisData,
-} from '@/lib/bridgeMesh';
-import type { ConnectorEdge } from '@/lib/neuralConnectors';
 import { SPHERE_POINT_COUNT, SPHERE_RADIUS } from '@/lib/neuralConstants';
 import { getNeuralPointTexture } from '@/lib/neuralPointTexture';
 
@@ -25,9 +19,8 @@ export interface MeshAnchor {
 interface MorphingNeuralMeshProps {
   phase: MeshPhase;
   size: { w: number; h: number };
-  anchors: MeshAnchor[];
   sphereFocus?: { x: number; y: number } | null;
-  connectorEdges?: ConnectorEdge[];
+  analysisPanelOpen?: boolean;
 }
 
 export const MESH_TRANSIT_MS = 850;
@@ -56,56 +49,28 @@ function screenToWorld(
   return camera.position.clone().add(_dir.multiplyScalar(dist));
 }
 
-function lerp3(
-  out: Float32Array,
-  a: Float32Array,
-  b: Float32Array,
-  t: number,
-  count: number,
-) {
-  for (let i = 0; i < count * 3; i++) {
-    out[i] = a[i] + (b[i] - a[i]) * t;
-  }
-}
-
 export function MorphingNeuralMesh({
   phase,
   size,
-  anchors,
   sphereFocus,
-  connectorEdges = [],
+  analysisPanelOpen = true,
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
 
   const dashboardMesh = useMemo(
-    () =>
-      createNeuralMeshGeometry(SPHERE_RADIUS, SPHERE_POINT_COUNT, 10, 3, 0.38),
+    () => createNeuralMeshGeometry(SPHERE_RADIUS, SPHERE_POINT_COUNT, 10, 3, 0.38),
     [],
   );
 
-  const analysisMesh = useMemo(
-    () => createBridgeAnalysisData(Math.max(connectorEdges.length, 1)),
-    [connectorEdges.length],
-  );
-
-  const bridgeSim = useRef<BridgeMeshSimulator | null>(null);
-  const simReady = useRef(false);
-
-  useEffect(() => {
-    bridgeSim.current = new BridgeMeshSimulator(analysisMesh);
-    simReady.current = false;
-  }, [analysisMesh]);
-
   const isDashboard = phase === 'idle-left' || phase === 'transit';
-  const pointCount = isDashboard ? dashboardMesh.pointCount : analysisMesh.pointCount;
+  // Siempre usar la esfera - misma geometria en dashboard y analisis
+  const pointCount = dashboardMesh.pointCount;
 
   const positions = useMemo(() => {
-    const buf = new Float32Array(
-      isDashboard ? dashboardMesh.spherePositions : analysisMesh.sphereLayout,
-    );
+    const buf = new Float32Array(dashboardMesh.spherePositions);
     return buf;
-  }, [isDashboard, dashboardMesh, analysisMesh]);
+  }, [dashboardMesh]);
 
   const linePositions = useMemo(() => new Float32Array(positions), [positions]);
 
@@ -115,18 +80,11 @@ export function MorphingNeuralMesh({
   const linesGeoRef = useRef<THREE.BufferGeometry>(null);
   const phaseStart = useRef(performance.now());
   const prevPhase = useRef<MeshPhase>(phase);
-  const splitScratch = useRef<Float32Array | null>(null);
-  const stretchedScratch = useRef<Float32Array | null>(null);
 
   useEffect(() => {
     if (prevPhase.current !== phase) {
       phaseStart.current = performance.now();
       prevPhase.current = phase;
-      if (phase === 'split' || phase === 'gather') {
-        splitScratch.current = null;
-        stretchedScratch.current = null;
-        simReady.current = false;
-      }
       if (phase === 'idle-left' || phase === 'transit') {
         positions.set(dashboardMesh.spherePositions);
         linePositions.set(dashboardMesh.spherePositions);
@@ -134,85 +92,36 @@ export function MorphingNeuralMesh({
     }
   }, [phase, dashboardMesh, positions, linePositions]);
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const w = size.w || 1000;
     const h = size.h || 600;
     const elapsed = performance.now() - phaseStart.current;
 
-    const project = (x: number, y: number) => screenToWorld(x, y, w, h, camera);
-    const screenAnchors = anchors.map((a) => ({ id: a.id, x: a.x, y: a.y }));
-
     let lineIndices: Uint16Array = dashboardMesh.lineIndices;
 
-    if (isDashboard) {
-      positions.set(dashboardMesh.spherePositions);
-      lineIndices = dashboardMesh.lineIndices;
-    } else {
-      lineIndices = analysisMesh.lineIndices;
-      const sim = bridgeSim.current;
-
-      if (phase === 'split') {
-        const posT = easeInOutCubic(Math.min(1, elapsed / MESH_SPLIT_MS));
-        if (!splitScratch.current) {
-          splitScratch.current = new Float32Array(analysisMesh.pointCount * 3);
-        }
-        buildSplitToBridges(
-          analysisMesh,
-          posT,
-          screenAnchors,
-          connectorEdges,
-          project,
-          splitScratch.current,
-        );
-        positions.set(splitScratch.current);
-      } else if (phase === 'gather') {
-        const posT = easeInOutCubic(Math.min(1, elapsed / MESH_GATHER_MS));
-        if (!splitScratch.current) {
-          splitScratch.current = new Float32Array(analysisMesh.pointCount * 3);
-          buildSplitToBridges(
-            analysisMesh,
-            1,
-            screenAnchors,
-            connectorEdges,
-            project,
-            splitScratch.current,
-          );
-        }
-        if (!stretchedScratch.current) {
-          stretchedScratch.current = new Float32Array(analysisMesh.pointCount * 3);
-        }
-        if (sim) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          stretchedScratch.current.set(sim.positions);
-        }
-        lerp3(
-          positions,
-          splitScratch.current,
-          stretchedScratch.current,
-          posT,
-          analysisMesh.pointCount,
-        );
-        if (posT > 0.92 && sim && !simReady.current) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          simReady.current = true;
-        }
-      } else if (phase === 'ready' && sim) {
-        if (!simReady.current) {
-          sim.snapToAnchors(screenAnchors, connectorEdges, project);
-          simReady.current = true;
-        }
-        sim.step(screenAnchors, connectorEdges, project, delta, true);
-        positions.set(sim.positions);
-        const breathe = Math.sin(performance.now() * 0.0007) * 0.004;
-        for (let i = 0; i < analysisMesh.pointCount; i++) {
-          positions[i * 3 + 2] += breathe * ((i % 5) - 2);
-        }
+    // Siempre usar la esfera con su geometria original
+    positions.set(dashboardMesh.spherePositions);
+    lineIndices = dashboardMesh.lineIndices;
+    
+    // Agregar ondulacion sutil en modo analisis
+    if (!isDashboard) {
+      const time = performance.now() * 0.001;
+      for (let i = 0; i < dashboardMesh.pointCount; i++) {
+        const wave = Math.sin(time * 0.8 + i * 0.05) * 0.015;
+        const wave2 = Math.cos(time * 0.6 + i * 0.03) * 0.01;
+        positions[i * 3 + 2] += wave + wave2;
       }
     }
 
     const focusPx = sphereFocus ?? { x: size.w * 0.25, y: size.h * 0.46 };
     _focusWorld.copy(screenToWorld(focusPx.x, focusPx.y, w, h, camera));
-    _centerWorld.set(0, 0, 0);
+    
+    // Centro de analisis: a la izquierda si el panel esta abierto, centrado si esta cerrado
+    const analysisCenterX = analysisPanelOpen ? size.w * 0.32 : size.w * 0.5;
+    const analysisCenterY = size.h * 0.48;
+    const _analysisWorld = screenToWorld(analysisCenterX, analysisCenterY, w, h, camera);
+    
+    _centerWorld.copy(_analysisWorld);
 
     if (groupRef.current) {
       if (phase === 'idle-left') {
@@ -221,17 +130,23 @@ export function MorphingNeuralMesh({
         const t = easeInOutCubic(Math.min(1, elapsed / MESH_TRANSIT_MS));
         _groupPos.lerpVectors(_focusWorld, _centerWorld, t);
       } else {
-        _groupPos.copy(_centerWorld);
+        // Modo analisis: interpolar hacia la posicion de analisis
+        const lerpFactor = 0.08;
+        _groupPos.lerp(_centerWorld, lerpFactor);
       }
       groupRef.current.position.copy(_groupPos);
 
       if (isDashboard) {
+        groupRef.current.rotation.y += 0.0008;
+        groupRef.current.rotation.x += 0.0003;
+        const targetRotY = state.pointer.x * Math.PI * 0.25;
+        const targetRotX = state.pointer.y * Math.PI * 0.15;
+        groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.03;
+        groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.03;
+      } else {
+        // Modo analisis: rotacion lenta continua
         groupRef.current.rotation.y += 0.0012;
         groupRef.current.rotation.x += 0.0004;
-        const px = state.pointer.x * 0.04;
-        const py = state.pointer.y * 0.04;
-        groupRef.current.rotation.y += (px - groupRef.current.rotation.y) * 0.015;
-        groupRef.current.rotation.x += (py - groupRef.current.rotation.x) * 0.015;
       }
     }
 
@@ -262,10 +177,10 @@ export function MorphingNeuralMesh({
         </bufferGeometry>
         <pointsMaterial
           map={pointTexture}
-          size={isDashboard ? 0.052 : 0.042}
+          size={isDashboard ? 0.052 : 0.055}
           color="#9eb8ae"
           transparent
-          opacity={isDashboard ? 0.72 : 0.68}
+          opacity={isDashboard ? 0.72 : 0.75}
           sizeAttenuation
           depthWrite={false}
           alphaTest={0.08}
@@ -280,7 +195,7 @@ export function MorphingNeuralMesh({
         <lineBasicMaterial
           color="#8fb5a8"
           transparent
-          opacity={isDashboard ? 0.34 : 0.38}
+          opacity={isDashboard ? 0.34 : 0.42}
           depthWrite={false}
         />
       </lineSegments>

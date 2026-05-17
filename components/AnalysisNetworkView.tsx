@@ -2,70 +2,61 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  type SimulationLinkDatum,
-} from 'd3-force';
 import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
-import { layoutNodesAroundCompra } from '@/lib/analysisLayout';
-import type { MeshAnchor, MeshPhase } from './MorphingNeuralMesh';
+import type { MeshPhase } from './MorphingNeuralMesh';
 import { MESH_GATHER_MS } from './MorphingNeuralMesh';
 
 type SimNode = AnalysisNode & {
   x: number;
   y: number;
-  vx?: number;
-  vy?: number;
-  fx?: number | null;
-  fy?: number | null;
+  vx: number;
+  vy: number;
+  angle: number;
+  targetAngle: number;
 };
 
 interface AnalysisNetworkViewProps {
   analysis: ThreatAnalysis;
   onBack: () => void;
   neuralPhase: MeshPhase;
-  onAnchorsChange: (anchors: MeshAnchor[]) => void;
-}
-
-function collideRadius(node: SimNode): number {
-  if (node.id === 'acquisition') return 150;
-  if (node.role === 'institution') return 62;
-  return 54;
+  onPanelToggle?: (isOpen: boolean) => void;
 }
 
 export function AnalysisNetworkView({
   analysis,
   onBack,
   neuralPhase,
-  onAnchorsChange,
+  onPanelToggle,
 }: AnalysisNetworkViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const simRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
   const dragIdRef = useRef<string | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const animationRef = useRef<number | null>(null);
 
   const [size, setSize] = useState({ w: 1000, h: 600 });
   const [nodes, setNodes] = useState<SimNode[]>([]);
+  const nodesRef = useRef<SimNode[]>([]);
+  const [panelOpen, setPanelOpen] = useState(true);
 
-  const [selectedId, setSelectedId] = useState<string>('acquisition');
+  const [selectedId, setSelectedId] = useState<string>('');
 
   const graphNodes = useMemo(
     () => analysis.nodes.filter((n) => n.role !== 'acquisition'),
     [analysis.nodes],
   );
 
-  const hubPos = useMemo(() => {
-    const acq = nodes.find((n) => n.id === 'acquisition');
-    if (acq) return { x: acq.x, y: acq.y };
-    return { x: size.w * 0.5, y: size.h * 0.48 };
-  }, [nodes, size]);
-
-  const layoutTargets = useMemo(
-    () => layoutNodesAroundCompra(hubPos, graphNodes, size),
-    [hubPos, graphNodes, size],
-  );
+  // Centro de la esfera - a la izquierda cuando el panel esta abierto, centrado cuando esta cerrado
+  const sphereCenterX = useMemo(() => {
+    if (panelOpen) {
+      return size.w * 0.32;
+    }
+    return size.w * 0.5;
+  }, [size.w, panelOpen]);
+  
+  const sphereCenterY = useMemo(() => size.h * 0.48, [size.h]);
+  
+  // Radio del circulo donde van los nodos
+  const circleRadius = useMemo(() => Math.min(size.w * 0.28, size.h * 0.36), [size]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -78,133 +69,226 @@ export function AnalysisNetworkView({
     return () => ro.disconnect();
   }, []);
 
+  // Notificar cambio de panel
+  useEffect(() => {
+    onPanelToggle?.(panelOpen);
+  }, [panelOpen, onPanelToggle]);
+
+  // Inicializar nodos en la circunferencia alrededor de la esfera
   useEffect(() => {
     if (neuralPhase !== 'gather' && neuralPhase !== 'ready') return;
     if (size.w < 200) return;
 
-    const pad = 88;
-    const cx = size.w * 0.5;
-    const cy = size.h * 0.48;
-
-    const acquisition: SimNode = {
-      id: 'acquisition',
-      title: 'Adquisición',
-      description: analysis.acquisition.summary,
-      risks: [],
-      imageUrl: '',
-      sources: [],
-      role: 'acquisition',
-      x: cx,
-      y: cy,
-    };
-
-    const initial: SimNode[] = [
-      acquisition,
-      ...graphNodes.map((n) => ({
+    const count = graphNodes.length;
+    const initial: SimNode[] = graphNodes.map((n, i) => {
+      // Distribuir uniformemente, empezando desde arriba
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      const x = sphereCenterX + circleRadius * Math.cos(angle);
+      const y = sphereCenterY + circleRadius * Math.sin(angle);
+      return {
         ...n,
-        x: layoutNodesAroundCompra({ x: cx, y: cy }, graphNodes, size)[n.id]?.x ?? cx,
-        y: layoutNodesAroundCompra({ x: cx, y: cy }, graphNodes, size)[n.id]?.y ?? cy,
-      })),
-    ];
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        angle,
+        targetAngle: angle,
+      };
+    });
 
-    const links: SimulationLinkDatum<SimNode>[] = analysis.edges.map((e) => ({
-      source: e.from,
-      target: e.to,
-    }));
-
-    const sim = forceSimulation<SimNode>(initial)
-      .force(
-        'link',
-        forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
-          .id((d) => d.id)
-          .distance((l) => {
-            const s = l.source as SimNode;
-            const t = l.target as SimNode;
-            if (s.id === 'acquisition' || t.id === 'acquisition') return 210;
-            return 175;
-          })
-          .strength(0.38),
-      )
-      .force('charge', forceManyBody<SimNode>().strength(-240).distanceMax(520))
-      .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(0.85))
-      .velocityDecay(0.65)
-      .alphaDecay(0.022)
-      .alphaMin(0.001)
-      .on('tick', () => {
-        for (const node of initial) {
-          const r = collideRadius(node);
-          node.x = Math.max(pad + r, Math.min(size.w - pad - r, node.x));
-          node.y = Math.max(pad + r + 50, Math.min(size.h - pad - r - 36, node.y));
-        }
-        setNodes([...initial]);
-      });
-
-    simRef.current = sim;
-    return () => {
-      sim.stop();
-    };
-  }, [neuralPhase, size, analysis.edges, analysis.acquisition.summary, graphNodes]);
-
-  const meshAnchors = useMemo((): MeshAnchor[] => {
-    const list: MeshAnchor[] = [{ id: 'acquisition', x: hubPos.x, y: hubPos.y, weight: 3.5 }];
-    for (const n of graphNodes) {
-      const p = nodes.find((x) => x.id === n.id);
-      list.push({
-        id: n.id,
-        x: p?.x ?? layoutTargets[n.id]?.x ?? hubPos.x,
-        y: p?.y ?? layoutTargets[n.id]?.y ?? hubPos.y,
-        weight: 1.2,
-      });
+    setNodes(initial);
+    nodesRef.current = initial;
+    if (initial.length > 0 && !selectedId) {
+      setSelectedId(initial[0].id);
     }
-    return list;
-  }, [hubPos, graphNodes, nodes, layoutTargets]);
+  }, [neuralPhase, size, graphNodes, circleRadius, sphereCenterX, sphereCenterY, selectedId]);
 
+  // Actualizar posiciones cuando cambia el centro (panel abre/cierra)
   useEffect(() => {
-    onAnchorsChange(meshAnchors);
-  }, [meshAnchors, onAnchorsChange]);
+    if (nodesRef.current.length === 0) return;
+    
+    const updated = nodesRef.current.map((node) => {
+      const x = sphereCenterX + circleRadius * Math.cos(node.targetAngle);
+      const y = sphereCenterY + circleRadius * Math.sin(node.targetAngle);
+      return {
+        ...node,
+        x,
+        y,
+      };
+    });
+    
+    nodesRef.current = updated;
+    setNodes(updated);
+  }, [sphereCenterX, sphereCenterY, circleRadius]);
+
+  // Simulacion de fisica con spring y amortiguamiento (tipo agua)
+  useEffect(() => {
+    const SPRING = 0.04;
+    const DAMPING = 0.85;
+    const CHAIN_SPRING = 0.02;
+
+    const tick = () => {
+      const currentNodes = nodesRef.current;
+      if (currentNodes.length === 0) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      let needsUpdate = false;
+      const updated = currentNodes.map((node, idx) => {
+        if (dragIdRef.current === node.id) {
+          return node;
+        }
+
+        const targetX = sphereCenterX + circleRadius * Math.cos(node.targetAngle);
+        const targetY = sphereCenterY + circleRadius * Math.sin(node.targetAngle);
+
+        const dx = targetX - node.x;
+        const dy = targetY - node.y;
+
+        let nvx = node.vx + dx * SPRING;
+        let nvy = node.vy + dy * SPRING;
+
+        // Fuerza de cadena con vecinos
+        const prevNode = currentNodes[(idx - 1 + currentNodes.length) % currentNodes.length];
+        const nextNode = currentNodes[(idx + 1) % currentNodes.length];
+
+        if (prevNode && prevNode.id !== dragIdRef.current) {
+          const pdx = prevNode.x - node.x;
+          const pdy = prevNode.y - node.y;
+          const dist = Math.sqrt(pdx * pdx + pdy * pdy);
+          const idealDist = 2 * circleRadius * Math.sin(Math.PI / currentNodes.length);
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += pdx * force;
+            nvy += pdy * force;
+          }
+        }
+
+        if (nextNode && nextNode.id !== dragIdRef.current) {
+          const ndx = nextNode.x - node.x;
+          const ndy = nextNode.y - node.y;
+          const dist = Math.sqrt(ndx * ndx + ndy * ndy);
+          const idealDist = 2 * circleRadius * Math.sin(Math.PI / currentNodes.length);
+          if (dist > 0) {
+            const force = (dist - idealDist) * CHAIN_SPRING / dist;
+            nvx += ndx * force;
+            nvy += ndy * force;
+          }
+        }
+
+        nvx *= DAMPING;
+        nvy *= DAMPING;
+
+        const nx = node.x + nvx;
+        const ny = node.y + nvy;
+
+        if (Math.abs(nvx) > 0.01 || Math.abs(nvy) > 0.01 || Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          needsUpdate = true;
+        }
+
+        return { ...node, x: nx, y: ny, vx: nvx, vy: nvy };
+      });
+
+      if (needsUpdate) {
+        nodesRef.current = updated;
+        setNodes(updated);
+      }
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [circleRadius, sphereCenterX, sphereCenterY]);
+
+  // Drag handlers
+  const handleDragStart = useCallback((id: string, clientX: number, clientY: number) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragIdRef.current = id;
+    dragOffsetRef.current = {
+      x: clientX - rect.left - node.x,
+      y: clientY - rect.top - node.y,
+    };
+  }, []);
+
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!dragIdRef.current) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const newX = clientX - rect.left - dragOffsetRef.current.x;
+    const newY = clientY - rect.top - dragOffsetRef.current.y;
+
+    const dx = newX - sphereCenterX;
+    const dy = newY - sphereCenterY;
+    const newAngle = Math.atan2(dy, dx);
+
+    const currentNodes = nodesRef.current;
+    const draggedIdx = currentNodes.findIndex((n) => n.id === dragIdRef.current);
+    if (draggedIdx === -1) return;
+
+    const draggedNode = currentNodes[draggedIdx];
+    const angleDelta = newAngle - draggedNode.angle;
+
+    const updated = currentNodes.map((node, idx) => {
+      if (node.id === dragIdRef.current) {
+        return {
+          ...node,
+          x: newX,
+          y: newY,
+          angle: newAngle,
+          targetAngle: newAngle,
+          vx: 0,
+          vy: 0,
+        };
+      }
+
+      const distance = Math.abs(idx - draggedIdx);
+      const chainDistance = Math.min(distance, currentNodes.length - distance);
+
+      let elasticity: number;
+      if (chainDistance === 1) {
+        elasticity = 0.25;
+      } else if (chainDistance === 2) {
+        elasticity = 0.45;
+      } else {
+        elasticity = 0.65;
+      }
+
+      const newTargetAngle = node.targetAngle + angleDelta * elasticity;
+      return { ...node, targetAngle: newTargetAngle };
+    });
+
+    nodesRef.current = updated;
+  }, [sphereCenterX, sphereCenterY]);
+
+  const handleDragEnd = useCallback(() => {
+    dragIdRef.current = null;
+  }, []);
 
   const onPointerDown = useCallback((id: string, e: React.PointerEvent) => {
     e.stopPropagation();
-    dragIdRef.current = id;
     setSelectedId(id);
-    const node = simRef.current?.nodes().find((n) => n.id === id);
-    if (node) {
-      node.fx = node.x;
-      node.fy = node.y;
-      node.vx = 0;
-      node.vy = 0;
-    }
-    simRef.current?.alphaTarget(0.12).restart();
+    handleDragStart(id, e.clientX, e.clientY);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+  }, [handleDragStart]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragIdRef.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const node = simRef.current?.nodes().find((n) => n.id === dragIdRef.current);
-    if (node) {
-      node.fx = e.clientX - rect.left;
-      node.fy = e.clientY - rect.top;
-    }
-  }, []);
+    handleDragMove(e.clientX, e.clientY);
+  }, [handleDragMove]);
 
   const onPointerUp = useCallback(() => {
-    const id = dragIdRef.current;
-    if (id) {
-      const node = simRef.current?.nodes().find((n) => n.id === id);
-      if (node) {
-        node.fx = null;
-        node.fy = null;
-      }
-    }
-    dragIdRef.current = null;
-    simRef.current?.alphaTarget(0);
-  }, []);
+    handleDragEnd();
+  }, [handleDragEnd]);
 
-  const selectedNode = graphNodes.find((n) => n.id === selectedId);
-  const isAcquisition = selectedId === 'acquisition';
+  const selectedNode = nodes.find((n) => n.id === selectedId);
   const showNodes = neuralPhase === 'gather' || neuralPhase === 'ready';
-  const showHub = neuralPhase !== 'idle-left';
 
   const [reveal, setReveal] = useState(0);
   useEffect(() => {
@@ -228,7 +312,6 @@ export function AnalysisNetworkView({
   }, [showNodes, neuralPhase]);
 
   const nodeRevealClamped = neuralPhase === 'ready' ? 1 : reveal;
-  const hubReveal = showHub ? Math.max(nodeRevealClamped, neuralPhase === 'transit' ? 0.85 : 1) : 0;
 
   return (
     <motion.div
@@ -238,162 +321,235 @@ export function AnalysisNetworkView({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
     >
+      {/* Header */}
       <div className="absolute top-20 left-8 z-20 pointer-events-none">
         <h2 className="text-3xl font-bold tracking-wider text-white">Analisis</h2>
       </div>
 
-      {(showHub || showNodes) && (
-        <div
-          className="absolute z-20 max-w-md touch-none"
-          style={{
-            left: hubPos.x,
-            top: hubPos.y,
-            transform: 'translate(-50%, -50%)',
-            opacity: hubReveal,
-            pointerEvents: hubReveal > 0.4 ? 'auto' : 'none',
-          }}
-          onPointerDown={(e) => onPointerDown('acquisition', e)}
-        >
-          <button
-            type="button"
-            onClick={() => setSelectedId('acquisition')}
-            className={`text-left w-72 rounded-2xl border p-4 transition-colors glass-panel cursor-grab active:cursor-grabbing ${
-              isAcquisition
-                ? 'border-teal-400/60 shadow-[0_0_24px_rgba(94,234,212,0.2)]'
-                : 'border-white/15 hover:border-white/30'
-            }`}
-          >
-            <p className="text-xs uppercase tracking-widest text-teal-300/80 mb-1">Adquisición</p>
-            <p className="text-sm font-semibold text-white leading-snug">{analysis.acquisition.title}</p>
-            <p className="text-xs text-white/60 mt-1">{analysis.acquisition.amount}</p>
-          </button>
-        </div>
-      )}
-
+      {/* Nodos alrededor de la esfera */}
       {showNodes &&
-        nodes
-          .filter((n) => n.id !== 'acquisition')
-          .map((node) => {
-            const active = selectedId === node.id;
-            const sizePx = node.role === 'institution' ? 112 : 96;
-            return (
+        nodes.map((node) => {
+          const active = selectedId === node.id;
+          const sizePx = node.role === 'institution' ? 90 : 78;
+          return (
+            <div
+              key={node.id}
+              className="absolute z-10 touch-none"
+              style={{
+                left: node.x,
+                top: node.y,
+                width: sizePx,
+                height: sizePx,
+                marginLeft: -sizePx / 2,
+                marginTop: -sizePx / 2,
+                opacity: nodeRevealClamped,
+                transform: `scale(${0.5 + nodeRevealClamped * 0.5})`,
+                transition: dragIdRef.current === node.id ? 'none' : 'opacity 0.35s ease-out',
+              }}
+              onPointerDown={(e) => onPointerDown(node.id, e)}
+            >
               <div
-                key={node.id}
-                className="absolute z-10 touch-none"
-                style={{
-                  left: node.x,
-                  top: node.y,
-                  width: sizePx,
-                  height: sizePx,
-                  marginLeft: -sizePx / 2,
-                  marginTop: -sizePx / 2,
-                  opacity: nodeRevealClamped,
-                  transform: `scale(${0.5 + nodeRevealClamped * 0.5})`,
-                  transition: 'opacity 0.35s ease-out',
-                }}
-                onPointerDown={(e) => onPointerDown(node.id, e)}
+                className={`w-full h-full rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-all ${
+                  node.highlight
+                    ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.35)]'
+                    : 'border-white/25'
+                } ${active ? 'ring-2 ring-teal-400/70 scale-105' : ''}`}
               >
-                <div
-                  className={`w-full h-full rounded-xl overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-shadow ${
-                    node.highlight
-                      ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.35)]'
-                      : 'border-white/25'
-                  } ${active ? 'ring-2 ring-teal-400/70' : ''}`}
-                  onClick={() => setSelectedId(node.id)}
-                >
-                  {node.imageUrl ? (
-                    <img
-                      src={node.imageUrl}
-                      alt={node.title}
-                      className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-2 object-contain' : ''}`}
-                      draggable={false}
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/70 text-sm">
-                      {node.title}
-                    </div>
-                  )}
-                </div>
-                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/70 whitespace-nowrap">
-                  {node.title}
-                </span>
-              </div>
-            );
-          })}
-
-      <AnimatePresence mode="wait">
-        {nodeRevealClamped > 0.65 && (
-          <motion.div
-            key={selectedId}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-8 pointer-events-auto"
-          >
-            {isAcquisition ? (
-              <motion.div className="glass-panel rounded-2xl p-6 border border-white/10 text-center">
-                <p className="text-lg leading-relaxed text-white/90">{analysis.acquisition.summary}</p>
-                <a
-                  href={analysis.acquisition.guatecomprasUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex mt-5 px-6 py-2.5 rounded-full bg-teal-800/50 border border-teal-500/40 text-teal-100 text-sm font-medium hover:bg-teal-700/50 transition"
-                >
-                  Ver en Guatecompras →
-                </a>
-              </motion.div>
-            ) : selectedNode ? (
-              <motion.div className="glass-panel rounded-2xl p-6 border border-white/10">
-                <p className="text-white/80 mb-4">{selectedNode.description}</p>
-                {selectedNode.risks.length > 0 && (
-                  <>
-                    <h4 className="text-lg font-semibold text-white mb-3">
-                      Esta compra presenta riesgos debido a:
-                    </h4>
-                    <ul className="list-disc pl-5 space-y-2 text-white/85 mb-4">
-                      {selectedNode.risks.map((risk) => (
-                        <li key={risk}>{risk}</li>
-                      ))}
-                    </ul>
-                  </>
+                {node.imageUrl ? (
+                  <img
+                    src={node.imageUrl}
+                    alt={node.title}
+                    className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-1.5 object-contain' : ''}`}
+                    draggable={false}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-white/10 flex items-center justify-center text-white/70 text-xs text-center p-1">
+                    {node.title}
+                  </div>
                 )}
-                {selectedNode.sources.length > 0 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-sm font-semibold text-white/60">Fuentes:</span>
-                    {selectedNode.sources.map((s) =>
-                      s.url ? (
-                        <a
-                          key={s.label}
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-lg glass text-sm text-white/90 hover:bg-white/15"
-                        >
-                          {s.label}
-                        </a>
-                      ) : (
-                        <span
-                          key={s.label}
-                          className="px-3 py-1.5 rounded-lg glass text-sm text-white/90"
-                        >
-                          {s.label}
+              </div>
+              <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-white/70 whitespace-nowrap max-w-[100px] truncate">
+                {node.title}
+              </span>
+            </div>
+          );
+        })}
+
+      {/* Panel lateral derecho - glassmorphism scrolleable */}
+      <AnimatePresence>
+        {panelOpen && nodeRevealClamped > 0.5 && (
+          <motion.div
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="absolute right-0 top-0 bottom-0 w-[420px] max-w-[45%] z-30 pointer-events-auto"
+          >
+            <div className="h-full flex flex-col bg-white/5 backdrop-blur-xl border-l border-white/10">
+              {/* Header del panel */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                <h3 className="text-lg font-semibold text-white">Detalles del Analisis</h3>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(false)}
+                  className="p-2 rounded-lg hover:bg-white/10 transition text-white/60 hover:text-white"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Contenido scrolleable */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Info de la compra */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-teal-400 text-xs font-semibold uppercase tracking-wider">Adquisicion</span>
+                  </div>
+                  <h4 className="text-xl font-bold text-white">{analysis.acquisition.title}</h4>
+                  <p className="text-white/60 text-sm">{analysis.acquisition.summary}</p>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-teal-300 font-semibold">
+                      Q{analysis.acquisition.amount?.toLocaleString() || '2,000,000'}
+                    </span>
+                    <span className="text-white/40">|</span>
+                    <span className="text-white/50">{analysis.acquisition.date || '15 Feb 2026'}</span>
+                  </div>
+                </div>
+
+                <div className="h-px bg-white/10" />
+
+                {/* Entidad seleccionada */}
+                {selectedNode && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      {selectedNode.imageUrl && (
+                        <div className={`w-12 h-12 rounded-lg overflow-hidden border ${selectedNode.highlight ? 'border-red-500' : 'border-white/20'}`}>
+                          <img
+                            src={selectedNode.imageUrl}
+                            alt={selectedNode.title}
+                            className={`w-full h-full object-cover ${selectedNode.role === 'institution' ? 'bg-white p-1 object-contain' : ''}`}
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <h5 className="text-white font-semibold">{selectedNode.title}</h5>
+                        <span className={`text-xs ${selectedNode.highlight ? 'text-red-400' : 'text-teal-400/80'}`}>
+                          {selectedNode.role === 'institution' ? 'Entidad' : selectedNode.role === 'supplier' ? 'Proveedor' : 'Producto'}
                         </span>
-                      ),
+                      </div>
+                    </div>
+
+                    <p className="text-white/70 text-sm leading-relaxed">{selectedNode.description}</p>
+
+                    {selectedNode.risks.length > 0 && (
+                      <div className="space-y-2">
+                        <h6 className="text-white font-semibold text-sm">Riesgos identificados:</h6>
+                        <ul className="space-y-2">
+                          {selectedNode.risks.map((risk, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-white/80">
+                              <span className="text-red-400 mt-1">•</span>
+                              <span>{risk}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {selectedNode.sources.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-xs text-white/50 font-semibold">Fuentes:</span>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedNode.sources.map((s) =>
+                            s.url ? (
+                              <a
+                                key={s.label}
+                                href={s.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80 hover:bg-white/10 transition"
+                              >
+                                {s.label}
+                              </a>
+                            ) : (
+                              <span
+                                key={s.label}
+                                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80"
+                              >
+                                {s.label}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
-              </motion.div>
-            ) : null}
+
+                <div className="h-px bg-white/10" />
+
+                {/* Lista de todas las entidades */}
+                <div className="space-y-3">
+                  <h6 className="text-white/50 text-xs font-semibold uppercase tracking-wider">Entidades involucradas</h6>
+                  <div className="space-y-2">
+                    {graphNodes.map((node) => (
+                      <button
+                        key={node.id}
+                        type="button"
+                        onClick={() => setSelectedId(node.id)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition text-left ${
+                          selectedId === node.id ? 'bg-teal-500/20 border border-teal-500/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
+                        }`}
+                      >
+                        {node.imageUrl && (
+                          <div className={`w-10 h-10 rounded-lg overflow-hidden border ${node.highlight ? 'border-red-500' : 'border-white/20'}`}>
+                            <img
+                              src={node.imageUrl}
+                              alt={node.title}
+                              className={`w-full h-full object-cover ${node.role === 'institution' ? 'bg-white p-1 object-contain' : ''}`}
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{node.title}</p>
+                          <p className="text-white/50 text-xs truncate">{node.role === 'institution' ? 'Entidad' : node.role === 'supplier' ? 'Proveedor' : 'Producto'}</p>
+                        </div>
+                        {node.highlight && (
+                          <span className="w-2 h-2 rounded-full bg-red-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* Boton para abrir panel cuando esta cerrado */}
+      {!panelOpen && nodeRevealClamped > 0.5 && (
+        <motion.button
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 text-white hover:bg-white/20 transition pointer-events-auto"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </motion.button>
+      )}
+
+      {/* Boton Volver */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30">
         <button
           type="button"
           onClick={onBack}
-          className="px-8 py-2.5 rounded-full glass border border-white/20 text-white hover:bg-white/10 transition"
+          className="px-8 py-2.5 rounded-full bg-white/5 backdrop-blur-lg border border-white/20 text-white hover:bg-white/10 transition pointer-events-auto"
         >
           Volver
         </button>
@@ -401,4 +557,3 @@ export function AnalysisNetworkView({
     </motion.div>
   );
 }
-
