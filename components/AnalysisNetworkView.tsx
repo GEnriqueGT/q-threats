@@ -415,7 +415,7 @@ export function AnalysisNetworkView({
                       Q{analysis.acquisition.amount?.toLocaleString() || '2,000,000'}
                     </span>
                     <span className="text-white/40">|</span>
-                    <span className="text-white/50">{analysis.acquisition.date || '15 Feb 2026'}</span>
+                    <span className="text-white/50">Compra Directa</span>
                   </div>
                 </div>
 
