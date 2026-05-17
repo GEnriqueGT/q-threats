@@ -30,6 +30,15 @@ export interface AnalysisNode {
   detailProps?: Record<string, string>;
 }
 
+export interface AnalysisEdge {
+  from: string;
+  to: string;
+  /** Tipo Cypher de la relación (p. ej. TRABAJA_EN). */
+  relType: string;
+  /** Propiedades de la relación en Neo4j, serializadas. */
+  relationshipProps?: Record<string, string>;
+}
+
 export interface ThreatAnalysis {
   threatId: string;
   acquisition: {
@@ -41,7 +50,7 @@ export interface ThreatAnalysis {
     date?: string;
   };
   nodes: AnalysisNode[];
-  edges: { from: string; to: string }[];
+  edges: AnalysisEdge[];
 }
 
 /** @deprecated usar AnalysisNode */

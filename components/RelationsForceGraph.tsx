@@ -13,11 +13,51 @@ import { zoom as d3zoom, zoomIdentity } from 'd3-zoom';
 import type { ZoomBehavior } from 'd3-zoom';
 import { formatNeo4jDetailValue } from '@/lib/formatNeo4jDetailValue';
 import { buildUndirectedNeighborMap, orderedNeighborIds } from '@/lib/graph/neighbors';
-import type { AnalysisNode, ThreatAnalysis } from '@/lib/types';
+import {
+  isUrlPropKey,
+  orderedRelationshipPropEntries,
+  splitDetailPropsAtUpdatedAt,
+} from '@/lib/graph/relationPanelDisplay';
+import type { AnalysisEdge, AnalysisNode, ThreatAnalysis } from '@/lib/types';
+
+function edgeLayoutFingerprint(relationshipProps: Record<string, string> | undefined): string {
+  const p = relationshipProps ?? {};
+  const keys = Object.keys(p).sort();
+  return keys.map((k) => `${k}=${p[k] ?? ''}`).join('\u001e');
+}
+
+/** Incidentes en aristas dirigidas donde `nodeId` es origen o destino. */
+function incidentEdgesForNode(nodeId: string, edges: AnalysisEdge[]): AnalysisEdge[] {
+  return edges.filter((e) => e.from === nodeId || e.to === nodeId);
+}
+
+function Neo4jDetailDd({ k, raw }: { k: string; raw: string }) {
+  const formatted = formatNeo4jDetailValue(k, raw);
+  const shown = (formatted || raw).trim();
+  const isUrl =
+    isUrlPropKey(k) && /^https?:\/\//i.test(shown);
+  return (
+    <dd className="text-white/85">
+      {!shown ? (
+        '—'
+      ) : isUrl ? (
+        <a
+          href={shown}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-300 underline-offset-2 hover:underline"
+        >
+          {shown}
+        </a>
+      ) : (
+        shown
+      )}
+    </dd>
+  );
+}
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** Colores por etiqueta Neo4j (tema oscuro). Diputado + Entidad → prioridad Diputado. */
 const FILL_DIPUTADO = 'rgba(139, 92, 246, 0.92)';
 const FILL_ENTIDAD = 'rgba(34, 197, 94, 0.88)';
 const FILL_DEFAULT = 'rgba(45, 212, 191, 0.85)';
@@ -277,7 +317,7 @@ export function RelationsForceGraph({ analysis }: { analysis: ThreatAnalysis }) 
     const edgeKey = new Set<string>();
     for (const e of analysis.edges) {
       if (!idSet.has(e.from) || !idSet.has(e.to)) continue;
-      const k = `${e.from}\0${e.to}`;
+      const k = `${e.from}\0${e.to}\0${e.relType}\0${edgeLayoutFingerprint(e.relationshipProps)}`;
       if (edgeKey.has(k)) continue;
       edgeKey.add(k);
       links.push({ source: e.from, target: e.to });
@@ -352,7 +392,7 @@ export function RelationsForceGraph({ analysis }: { analysis: ThreatAnalysis }) 
     gRoot.appendChild(nodeSel);
 
     const lineEls: SVGLineElement[] = linkIdPairs.map((pair) => {
-      const line = document.createElementNS(NS, 'line');
+      const line = document.createElementNS(NS, 'line') as SVGLineElement;
       line.setAttribute('class', 'graph-link');
       line.setAttribute('data-from-id', pair.from);
       line.setAttribute('data-to-id', pair.to);
@@ -660,33 +700,104 @@ export function RelationsForceGraph({ analysis }: { analysis: ThreatAnalysis }) 
                 </div>
               </div>
             )}
-            {selectedNode.detailProps && Object.keys(selectedNode.detailProps).length > 0 ? (
-              <div>
-                <h4 className="mb-2 text-base font-semibold uppercase tracking-wide text-white/60">
-                  Datos en Neo4j
-                </h4>
-                <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-base [word-break:break-word] leading-snug">
-                  {Object.entries(selectedNode.detailProps).map(([key, val]) => {
-                    const formatted = formatNeo4jDetailValue(key, val);
-                    const shown = formatted || val;
-                    return (
-                      <Fragment key={key}>
-                        <dt className="font-medium text-teal-400/90">{key}</dt>
-                        <dd className="text-white/85">{shown.trim() ? shown : '—'}</dd>
-                      </Fragment>
-                    );
-                  })}
-                </dl>
-              </div>
-            ) : (
-              <p className="mt-2 text-base text-white/55">
-                Sin propiedades adicionales serializadas en{' '}
-                <code className="rounded bg-white/10 px-1 py-0.5 text-[0.9em] text-white/75">
-                  detailProps
-                </code>
-                .
-              </p>
-            )}
+            {(() => {
+              const detailProps = selectedNode.detailProps;
+              const hasDetailRows = Boolean(detailProps && Object.keys(detailProps).length > 0);
+              const incidents = incidentEdgesForNode(selectedNode.id, analysis.edges);
+              const split = splitDetailPropsAtUpdatedAt(detailProps);
+
+              const detailRow = ([key, val]: [string, string]) => (
+                <Fragment key={key}>
+                  <dt className="font-medium text-teal-400/90">{key}</dt>
+                  <Neo4jDetailDd k={key} raw={val} />
+                </Fragment>
+              );
+
+              const neighborBlock =
+                incidents.length > 0 ? (
+                  <section
+                    className={
+                      hasDetailRows
+                        ? 'mt-6 border-t border-white/10 pt-5'
+                        : 'mb-5'
+                    }
+                  >
+                    <h4 className="mb-3 text-base font-semibold uppercase tracking-wide text-white/60">
+                      Relaciones con vecinos
+                    </h4>
+                    <ul className="space-y-4">
+                      {incidents.map((e, i) => {
+                        const otherId = e.from === selectedNode.id ? e.to : e.from;
+                        const neighbor = nodesById.get(otherId);
+                        const title = neighbor?.title ?? otherId;
+                        const saliente = e.from === selectedNode.id;
+                        const relEntries = orderedRelationshipPropEntries(e.relationshipProps);
+                        return (
+                          <li
+                            key={`${e.from}\0${e.to}\0${e.relType}\0${i}`}
+                            className="rounded-xl border border-white/10 bg-black/20 p-4"
+                          >
+                            <p className="text-base font-semibold text-white">{title}</p>
+                            <p className="mt-1 text-sm text-white/55">
+                              {saliente ? 'Saliente' : 'Entrante'} ·{' '}
+                              <span className="font-medium text-teal-300/90">{e.relType}</span>
+                            </p>
+                            {relEntries.length === 0 ? (
+                              <p className="mt-2 text-sm text-white/50">
+                                Sin propiedades en la relación.
+                              </p>
+                            ) : (
+                              <dl className="mt-3 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm [word-break:break-word] leading-snug">
+                                {relEntries.map(([rk, rv]) => (
+                                  <Fragment key={rk}>
+                                    <dt className="font-medium text-teal-400/85">{rk}</dt>
+                                    <Neo4jDetailDd k={rk} raw={rv} />
+                                  </Fragment>
+                                ))}
+                              </dl>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ) : null;
+
+              if (!hasDetailRows && incidents.length === 0) {
+                return (
+                  <p className="mt-2 text-base text-white/55">
+                    Sin propiedades adicionales serializadas en{' '}
+                    <code className="rounded bg-white/10 px-1 py-0.5 text-[0.9em] text-white/75">
+                      detailProps
+                    </code>{' '}
+                    ni aristas incidentes en este subgrafo.
+                  </p>
+                );
+              }
+
+              return (
+                <>
+                  {hasDetailRows && (
+                    <div>
+                      <h4 className="mb-2 text-base font-semibold uppercase tracking-wide text-white/60">
+                        Datos en Neo4j
+                      </h4>
+                      <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-base [word-break:break-word] leading-snug">
+                        {split.before.map(detailRow)}
+                        {split.updatedAtEntry ? detailRow(split.updatedAtEntry) : null}
+                      </dl>
+                      {neighborBlock}
+                      {split.updatedAtEntry && split.after.length > 0 ? (
+                        <dl className="mt-4 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-base [word-break:break-word] leading-snug">
+                          {split.after.map(detailRow)}
+                        </dl>
+                      ) : null}
+                    </div>
+                  )}
+                  {!hasDetailRows && neighborBlock}
+                </>
+              );
+            })()}
           </div>
         </aside>
       )}

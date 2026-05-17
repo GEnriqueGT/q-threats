@@ -1,17 +1,18 @@
-import neo4j from 'neo4j-driver';
-import type { ThreatAnalysis } from '@/lib/types';
+import neo4j, { type Record as Neo4jRecord } from 'neo4j-driver';
+import type { AnalysisEdge, ThreatAnalysis } from '@/lib/types';
 import { getNeo4jDatabase, getNeo4jRelationshipLimit } from './config';
 import { getNeo4jDriver } from './driver';
 import { mapNeo4jNodeToAnalysisNode } from './mapNeo4jNode';
+import { serializeNeo4jPropertyMap } from '@/lib/neo4j/serializeNeo4jPropertyMap';
 
 const DEFAULT_RELS_NO_LIMIT = `
 MATCH (n)-[r]->(m)
-RETURN n AS source, m AS target, type(r) AS relType
+RETURN n AS source, m AS target, type(r) AS relType, r AS rel
 `;
 
 const DEFAULT_RELS_WITH_LIMIT = `
 MATCH (n)-[r]->(m)
-RETURN n AS source, m AS target, type(r) AS relType
+RETURN n AS source, m AS target, type(r) AS relType, r AS rel
 LIMIT toInteger($limit)
 `;
 
@@ -28,9 +29,72 @@ RETURN o AS orphan
 LIMIT toInteger($limit)
 `;
 
+function fingerprintRelProps(props: Record<string, string>): string {
+  const keys = Object.keys(props).sort();
+  return keys.map((k) => `${k}=${props[k] ?? ''}`).join('\u001e');
+}
+
+/** Dedupe estable: `elementId` de la relación si existe; si no, huella de extremos + tipo + props. */
+function edgeDedupeKey(
+  from: string,
+  to: string,
+  relType: string,
+  props: Record<string, string>,
+  relationshipElementId?: string,
+): string {
+  if (relationshipElementId && relationshipElementId.length > 0) {
+    return `id:${relationshipElementId}`;
+  }
+  return `fp:${from}\0${to}\0${relType}\0${fingerprintRelProps(props)}`;
+}
+
+/**
+ * Interpreta columnas de fila Cypher: preferir `rel` (relationship); si falta, `relType` + mapa `relProps`.
+ * Contrato ampliado para `NEO4J_CYPHER`: source, target obligatorios; rel opcional; relType + relProps opcionales.
+ */
+function parseRelationshipColumns(record: Neo4jRecord): {
+  relType: string;
+  relationshipProps: Record<string, string>;
+  relationshipElementId?: string;
+} {
+  const keys = record.keys;
+  const relVal = keys.includes('rel') ? record.get('rel') : undefined;
+
+  if (relVal !== undefined && relVal !== null && neo4j.isRelationship(relVal)) {
+    const rawProps = relVal.properties as Record<string, unknown>;
+    const relationshipProps = serializeNeo4jPropertyMap(rawProps);
+    const relType =
+      typeof relVal.type === 'string' && relVal.type.length > 0 ? relVal.type : 'RELATED';
+    const elementId = (relVal as unknown as { elementId?: string }).elementId;
+    const relationshipElementId =
+      typeof elementId === 'string' && elementId.length > 0 ? elementId : undefined;
+    return { relType, relationshipProps, relationshipElementId };
+  }
+
+  const rtRaw = keys.includes('relType') ? record.get('relType') : undefined;
+  const relType =
+    typeof rtRaw === 'string' && rtRaw.trim().length > 0 ? rtRaw.trim() : 'RELATED';
+
+  let relationshipProps: Record<string, string> = {};
+  if (keys.includes('relProps')) {
+    const rp = record.get('relProps');
+    if (rp && typeof rp === 'object' && !neo4j.isNode(rp) && !neo4j.isRelationship(rp)) {
+      relationshipProps = serializeNeo4jPropertyMap(rp as Record<string, unknown>);
+    }
+  }
+
+  return {
+    relType,
+    relationshipProps,
+    relationshipElementId: undefined,
+  };
+}
+
 /**
  * Lee relaciones y nodos aislados desde Neo4j → ThreatAnalysis (solo datos de la base; sin nodo raíz sintético).
- * `NEO4J_CYPHER` puede reemplazar la query de relaciones; debe devolver source, target, relType. Si usas $limit, incluye LIMIT.
+ * `NEO4J_CYPHER` puede reemplazar la query de relaciones; debe devolver source, target y
+ * rel opcional (relationship) o bien relType + relProps (mapa).
+ * Si usas $limit, incluye LIMIT toInteger($limit) o el parámetro que definas.
  */
 export async function fetchThreatAnalysisFromNeo4j(): Promise<ThreatAnalysis | null> {
   const driver = getNeo4jDriver();
@@ -55,8 +119,8 @@ export async function fetchThreatAnalysisFromNeo4j(): Promise<ThreatAnalysis | n
 
   try {
     const nodesMap = new Map<string, ReturnType<typeof mapNeo4jNodeToAnalysisNode>>();
-    const edgeKey = new Set<string>();
-    const edges: { from: string; to: string }[] = [];
+    const edgeSeen = new Set<string>();
+    const edges: AnalysisEdge[] = [];
 
     const relResult = await session.executeRead((tx) => tx.run(relCypher, params));
     for (const record of relResult.records) {
@@ -72,11 +136,25 @@ export async function fetchThreatAnalysisFromNeo4j(): Promise<ThreatAnalysis | n
 
       const from = sNode.id;
       const to = tNode.id;
-      const ek = `${from}\0${to}`;
-      if (!edgeKey.has(ek)) {
-        edgeKey.add(ek);
-        edges.push({ from, to });
-      }
+      const {
+        relType,
+        relationshipProps,
+        relationshipElementId,
+      } = parseRelationshipColumns(record);
+
+      const dedupeKey = edgeDedupeKey(
+        from,
+        to,
+        relType,
+        relationshipProps,
+        relationshipElementId,
+      );
+      if (edgeSeen.has(dedupeKey)) continue;
+      edgeSeen.add(dedupeKey);
+
+      const props =
+        Object.keys(relationshipProps).length > 0 ? relationshipProps : undefined;
+      edges.push({ from, to, relType, relationshipProps: props });
     }
 
     const orphanResult = await session.executeRead((tx) => tx.run(orphanCypher, params));

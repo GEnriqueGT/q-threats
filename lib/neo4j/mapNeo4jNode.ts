@@ -1,9 +1,6 @@
 import type { Node as NeoNode } from 'neo4j-driver';
 import type { AnalysisNode } from '@/lib/types';
-import {
-  isTemporalDetailPropKey,
-  temporalNeo4jObjectToIsoDateOnly,
-} from '@/lib/neo4j/neo4jTemporalToDateOnly';
+import { serializeNeo4jPropertyMap } from '@/lib/neo4j/serializeNeo4jPropertyMap';
 
 function asStringProp(props: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
@@ -46,32 +43,6 @@ function inferRole(
     return 'product';
   }
   return 'institution';
-}
-
-function serializeNeo4jProperties(props: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(props)) {
-    if (v === null || v === undefined) {
-      out[k] = '';
-    } else if (typeof v === 'object') {
-      const obj = v as Record<string, unknown>;
-      const dateOnlyIso =
-        isTemporalDetailPropKey(k) ? temporalNeo4jObjectToIsoDateOnly(obj) : null;
-      if (dateOnlyIso) {
-        out[k] = dateOnlyIso;
-      } else {
-        try {
-          const s = JSON.stringify(v);
-          out[k] = s.length > 400 ? `${s.slice(0, 397)}…` : s;
-        } catch {
-          out[k] = String(v);
-        }
-      }
-    } else {
-      out[k] = String(v);
-    }
-  }
-  return out;
 }
 
 function mapSources(props: Record<string, unknown>): import('@/lib/types').ThreatSource[] {
@@ -120,6 +91,6 @@ export function mapNeo4jNodeToAnalysisNode(node: NeoNode): AnalysisNode {
     highlight,
     role: inferRole(labels, props),
     neo4jLabels: [...labels],
-    detailProps: serializeNeo4jProperties(props),
+    detailProps: serializeNeo4jPropertyMap(props),
   };
 }

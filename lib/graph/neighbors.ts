@@ -1,9 +1,9 @@
-import type { AnalysisNode } from '@/lib/types';
+import type { AnalysisEdge, AnalysisNode } from '@/lib/types';
 
 /** Vecindad no dirigida solo entre IDs presentes en el subgrafo. */
 export function buildUndirectedNeighborMap(
   graphNodeIds: Set<string>,
-  edges: { from: string; to: string }[],
+  edges: Pick<AnalysisEdge, 'from' | 'to'>[],
 ): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {

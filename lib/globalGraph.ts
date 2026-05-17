@@ -1,4 +1,4 @@
-import type { AnalysisNode, ThreatAnalysis } from './types';
+import type { AnalysisEdge, AnalysisNode, ThreatAnalysis } from './types';
 import { threatAnalyses } from './data';
 
 /** Nodo raíz sintético (role acquisition); no se muestra en el anillo del grafo. */
@@ -29,17 +29,28 @@ export function buildGlobalRelationsThreatAnalysis(): ThreatAnalysis {
     }
   }
 
-  const edges: { from: string; to: string }[] = [];
+  const edges: AnalysisEdge[] = [];
   const edgeKey = new Set<string>();
+
+  const edgeFingerprint = (e: AnalysisEdge): string => {
+    const p = e.relationshipProps ?? {};
+    const keys = Object.keys(p).sort();
+    return keys.map((k) => `${k}=${p[k] ?? ''}`).join('\u001e');
+  };
 
   for (const analysis of Object.values(threatAnalyses)) {
     for (const e of analysis.edges) {
       const from = e.from === 'acquisition' ? GLOBAL_RELATIONS_ROOT_ID : e.from;
       const to = e.to === 'acquisition' ? GLOBAL_RELATIONS_ROOT_ID : e.to;
-      const k = `${from}\0${to}`;
+      const k = `${from}\0${to}\0${e.relType}\0${edgeFingerprint(e)}`;
       if (edgeKey.has(k)) continue;
       edgeKey.add(k);
-      edges.push({ from, to });
+      edges.push({
+        from,
+        to,
+        relType: e.relType,
+        relationshipProps: e.relationshipProps,
+      });
     }
   }
 

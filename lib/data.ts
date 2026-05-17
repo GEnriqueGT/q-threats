@@ -97,11 +97,11 @@ export const threatAnalyses: Record<string, ThreatAnalysis> = {
       },
     ],
     edges: [
-      { from: 'acquisition', to: 'inacif' },
-      { from: 'acquisition', to: 'odebrecht' },
-      { from: 'acquisition', to: 'bloque' },
-      { from: 'inacif', to: 'odebrecht' },
-      { from: 'inacif', to: 'bloque' },
+      { from: 'acquisition', to: 'inacif', relType: 'VINCULA' },
+      { from: 'acquisition', to: 'odebrecht', relType: 'VINCULA' },
+      { from: 'acquisition', to: 'bloque', relType: 'VINCULA' },
+      { from: 'inacif', to: 'odebrecht', relType: 'CONTRATA_CON' },
+      { from: 'inacif', to: 'bloque', relType: 'INCLUYE' },
     ],
   },
   t2: {
@@ -135,9 +135,7 @@ export const threatAnalyses: Record<string, ThreatAnalysis> = {
         role: 'institution',
       },
     ],
-    edges: [
-      { from: 'acquisition', to: 'congreso' },
-    ],
+    edges: [{ from: 'acquisition', to: 'congreso', relType: 'VINCULA' }],
   },
   t3: {
     threatId: 't3',
@@ -169,7 +167,7 @@ export const threatAnalyses: Record<string, ThreatAnalysis> = {
         role: 'institution',
       },
     ],
-    edges: [{ from: 'acquisition', to: 'municipalidad' }],
+    edges: [{ from: 'acquisition', to: 'municipalidad', relType: 'VINCULA' }],
   },
 };
 
