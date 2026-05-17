@@ -1,0 +1,36 @@
+{
+  "name": "qthreats",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "dev:clean": "npm run clean && next dev --port 3000",
+    "clean": "node -e \"const fs=require('fs');['.next','node_modules/.cache'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch{}})\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "generate:departments": "node scripts/generate-department-paths.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "d3-force": "^3.0.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "next": "^15.3.2",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/d3-force": "^3.0.10",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "d3-geo": "^3.1.1",
+    "tailwindcss": "^4.1.14",
+    "topojson-client": "^3.1.0",
+    "typescript": "~5.8.2"
+  }
+}
