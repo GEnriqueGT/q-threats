@@ -118,23 +118,28 @@ export function AnalysisNetworkView({
     const newY = Math.max(pad, Math.min(size.h - pad, clientY - rect.top - dragOffsetRef.current.y));
     
     setNodes((prev) => {
-      const draggedNode = prev.find((n) => n.id === dragIdRef.current);
-      if (!draggedNode) return prev;
+      const draggedIdx = prev.findIndex((n) => n.id === dragIdRef.current);
+      if (draggedIdx === -1) return prev;
+      const draggedNode = prev[draggedIdx];
       
       const deltaX = newX - draggedNode.x;
       const deltaY = newY - draggedNode.y;
       
-      // Elasticidad: los nodos conectados se mueven un poco
-      return prev.map((n) => {
+      // Elastico tenso: los nodos adyacentes se mueven proporcionalmente
+      return prev.map((n, idx) => {
         if (n.id === dragIdRef.current) {
           return { ...n, x: newX, y: newY };
         }
-        // Calcular distancia al nodo arrastrado
-        const dist = Math.sqrt(
-          Math.pow(n.x - draggedNode.x, 2) + Math.pow(n.y - draggedNode.y, 2)
-        );
-        // Factor de elasticidad basado en la distancia (mas cerca = mas efecto)
-        const elasticity = Math.max(0, 1 - dist / 600) * 0.25;
+        
+        // Calcular distancia en la fila (vecino directo = 1, siguiente = 2, etc.)
+        const rowDistance = Math.abs(idx - draggedIdx);
+        
+        // Factor de elasticidad fuerte para vecinos directos, decrece exponencialmente
+        // Vecino directo: 0.65, segundo: 0.35, tercero: 0.15
+        const elasticity = rowDistance === 0 ? 0 : Math.pow(0.55, rowDistance - 1) * 0.65;
+        
+        if (elasticity < 0.05) return n;
+        
         const elasticX = Math.max(pad, Math.min(size.w - pad, n.x + deltaX * elasticity));
         const elasticY = Math.max(pad, Math.min(size.h - pad, n.y + deltaY * elasticity));
         return { ...n, x: elasticX, y: elasticY };

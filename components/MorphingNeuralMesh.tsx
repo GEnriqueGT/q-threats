@@ -217,18 +217,21 @@ export function MorphingNeuralMesh({
         sim.step(screenAnchors, connectorEdges, project, delta, true);
         positions.set(sim.positions);
         
-        // Animacion de ondulacion organica de la malla
+        // Animacion de ondulacion organica INTENSA de la malla
         const time = performance.now() * 0.001;
         for (let i = 0; i < analysisMesh.pointCount; i++) {
-          const phase1 = vertexOffsets[i % vertexOffsets.length];
+          const phaseOffset = vertexOffsets[i % vertexOffsets.length];
           const speed = vertexOffsets[(i * 3 + 1) % vertexOffsets.length];
           
-          // Ondulacion suave en X e Y
-          const waveX = Math.sin(time * speed * 0.8 + phase1 + i * 0.1) * 0.008;
-          const waveY = Math.cos(time * speed * 0.6 + phase1 * 1.3 + i * 0.15) * 0.006;
-          const waveZ = Math.sin(time * speed * 0.5 + phase1 * 0.7) * 0.01;
+          // Ondulacion mucho mas pronunciada
+          const waveX = Math.sin(time * speed * 1.5 + phaseOffset + i * 0.08) * 0.025;
+          const waveY = Math.cos(time * speed * 1.2 + phaseOffset * 1.5 + i * 0.12) * 0.02;
+          const waveZ = Math.sin(time * speed * 0.9 + phaseOffset * 0.8 + i * 0.05) * 0.03;
           
-          positions[i * 3] += waveX;
+          // Onda viajera adicional para efecto de flujo de datos
+          const travelWave = Math.sin(time * 2.5 - i * 0.15) * 0.012;
+          
+          positions[i * 3] += waveX + travelWave;
           positions[i * 3 + 1] += waveY;
           positions[i * 3 + 2] += waveZ;
         }
@@ -263,27 +266,37 @@ export function MorphingNeuralMesh({
 
     linePositions.set(positions.subarray(0, pointCount * 3));
 
-    // Animacion de parpadeo de vertices (solo en modo ready/analisis)
-    const pm = pointsMaterialRef.current;
-    if (pm && !isDashboard) {
-      const time = performance.now() * 0.002;
-      const basePulse = 0.55 + Math.sin(time * 0.5) * 0.15;
-      pm.opacity = basePulse;
-    }
-    
-    // Parpadeo individual de vertices
+    // Parpadeo intenso de vertices (solo en modo analisis)
     if (!isDashboard) {
       const time = performance.now() * 0.001;
+      
+      // Actualizar opacidad del material con pulso mas pronunciado
+      const pm = pointsMaterialRef.current;
+      if (pm) {
+        const basePulse = 0.6 + Math.sin(time * 1.2) * 0.25;
+        pm.opacity = basePulse;
+      }
+      
+      // Parpadeo individual INTENSO de vertices
       for (let i = 0; i < Math.min(pointCount, vertexColors.length / 3); i++) {
-        const phase = vertexOffsets[(i * 3) % vertexOffsets.length];
+        const phaseOffset = vertexOffsets[(i * 3) % vertexOffsets.length];
         const speed = vertexOffsets[(i * 3 + 1) % vertexOffsets.length];
         const intensity = vertexOffsets[(i * 3 + 2) % vertexOffsets.length];
         
-        // Algunos vertices parpadean mas que otros
-        const pulse = 0.6 + Math.sin(time * speed * 2 + phase) * 0.4 * intensity;
-        vertexColors[i * 3] = pulse;
-        vertexColors[i * 3 + 1] = pulse;
-        vertexColors[i * 3 + 2] = pulse;
+        // Parpadeo mas rapido y con mayor contraste
+        const fastPulse = Math.sin(time * speed * 4 + phaseOffset) * 0.5 + 0.5;
+        const slowPulse = Math.sin(time * speed * 1.5 + phaseOffset * 2) * 0.3 + 0.7;
+        
+        // Combinar pulsos con intensidad variable
+        const combinedPulse = (fastPulse * intensity + slowPulse * (1 - intensity * 0.5));
+        
+        // Ocasionalmente algunos vertices brillan muy fuerte (efecto chispa)
+        const sparkle = Math.sin(time * 8 + i * 0.7) > 0.92 ? 1.5 : 1;
+        
+        const finalBrightness = Math.min(1.5, combinedPulse * sparkle);
+        vertexColors[i * 3] = finalBrightness;
+        vertexColors[i * 3 + 1] = finalBrightness;
+        vertexColors[i * 3 + 2] = finalBrightness;
       }
     }
 
@@ -327,11 +340,11 @@ export function MorphingNeuralMesh({
         <pointsMaterial
           ref={pointsMaterialRef}
           map={pointTexture}
-          size={isDashboard ? 0.052 : 0.048}
+          size={isDashboard ? 0.052 : 0.065}
           color="#9eb8ae"
           vertexColors={!isDashboard}
           transparent
-          opacity={isDashboard ? 0.72 : 0.68}
+          opacity={isDashboard ? 0.72 : 0.85}
           sizeAttenuation
           depthWrite={false}
           alphaTest={0.08}
