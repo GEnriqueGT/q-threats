@@ -25,8 +25,8 @@ function edgeKey(a: number, b: number): string {
 
 /** Rejilla tipo media: extremos en u=0 y u=1 son los anclajes del enlace */
 export function createBridgeMeshTemplate(seed = 0): BridgeMeshTemplate {
-  const cols = 12;
-  const rows = 7;
+  const cols = 8;
+  const rows = 5;
   const restU = new Float32Array(cols * rows);
   const restV = new Float32Array(cols * rows);
   const anchorA: number[] = [];
@@ -39,11 +39,10 @@ export function createBridgeMeshTemplate(seed = 0): BridgeMeshTemplate {
       const u = cols > 1 ? c / (cols - 1) : 0;
       const vNorm = rows > 1 ? r / (rows - 1) : 0.5;
       const v = (vNorm - 0.5) * 2;
-      // More organic neural-like bulge shape
-      const bulge = Math.sin(u * Math.PI) * Math.pow(Math.sin(u * Math.PI), 0.3);
-      const width = 0.18 + bulge * 0.22 + (seeded(seed + r * 5 + c) - 0.5) * 0.08;
-      restU[idx] = u + (seeded(seed + 100 + idx) - 0.5) * 0.04;
-      restV[idx] = v * width + (seeded(seed + 80 + idx) - 0.5) * 0.05;
+      const bulge = Math.sin(u * Math.PI);
+      const width = 0.22 + bulge * 0.14 + (seeded(seed + r * 5 + c) - 0.5) * 0.06;
+      restU[idx] = u;
+      restV[idx] = v * width + (seeded(seed + 80 + idx) - 0.5) * 0.03;
       if (c === 0) anchorA.push(idx);
       if (c === cols - 1) anchorB.push(idx);
       idx++;
@@ -54,24 +53,14 @@ export function createBridgeMeshTemplate(seed = 0): BridgeMeshTemplate {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const i = at(r, c);
-      // Horizontal connections (neural axon-like)
       if (c < cols - 1) edges.add(edgeKey(i, at(r, c + 1)));
-      // Vertical connections (dendrite-like, sparser)
-      if (r < rows - 1 && seeded(seed + r * 17 + c) > 0.35) {
-        edges.add(edgeKey(i, at(r + 1, c)));
-      }
-      // Diagonal connections (synaptic-like, random)
+      if (r < rows - 1) edges.add(edgeKey(i, at(r + 1, c)));
       if (r < rows - 1 && c < cols - 1) {
-        if (seeded(seed + r * 11 + c) > 0.42) {
+        if (seeded(seed + r * 11 + c) > 0.48) {
           edges.add(edgeKey(i, at(r + 1, c + 1)));
-        }
-        if (seeded(seed + r * 13 + c + 7) > 0.48) {
+        } else {
           edges.add(edgeKey(i + 1, at(r + 1, c)));
         }
-      }
-      // Long-range skip connections (neural shortcuts)
-      if (c < cols - 2 && seeded(seed + r * 23 + c) > 0.7) {
-        edges.add(edgeKey(i, at(r, c + 2)));
       }
     }
   }
@@ -327,11 +316,10 @@ export class BridgeMeshSimulator {
     elastic = true,
   ): void {
     const byId = new Map(anchors.map((a) => [a.id, a]));
-    // Parametros de fisica mas elasticos para efecto de rebote
-    const kTarget = elastic ? 0.12 : 1; // Mas suave = mas rebote
-    const kLink = elastic ? 0.55 : 1; // Resortes mas fuertes entre puntos
-    const damping = elastic ? 0.88 : 0; // Menos amortiguamiento = mas rebote
-    const substeps = elastic ? 3 : 1; // Mas substeps para estabilidad
+    const kTarget = elastic ? 0.22 : 1;
+    const kLink = elastic ? 0.38 : 1;
+    const damping = elastic ? 0.82 : 0;
+    const substeps = elastic ? 2 : 1;
     const subDt = dt / substeps;
 
     for (let sub = 0; sub < substeps; sub++) {
