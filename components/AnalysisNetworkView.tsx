@@ -125,20 +125,26 @@ export function AnalysisNetworkView({
       const deltaX = newX - draggedNode.x;
       const deltaY = newY - draggedNode.y;
       
-      // Elastico tenso: los nodos adyacentes se mueven proporcionalmente
+      // Fisica de cadena: el nodo arrastrado mueve a todos
+      // Solo el vecino inmediato tiene resistencia (se mueve menos)
+      // Los nodos mas lejanos siguen completamente al vecino
       return prev.map((n, idx) => {
         if (n.id === dragIdRef.current) {
           return { ...n, x: newX, y: newY };
         }
         
-        // Calcular distancia en la fila (vecino directo = 1, siguiente = 2, etc.)
         const rowDistance = Math.abs(idx - draggedIdx);
         
-        // Factor de elasticidad fuerte para vecinos directos, decrece exponencialmente
-        // Vecino directo: 0.65, segundo: 0.35, tercero: 0.15
-        const elasticity = rowDistance === 0 ? 0 : Math.pow(0.55, rowDistance - 1) * 0.65;
-        
-        if (elasticity < 0.05) return n;
+        // Vecino inmediato: tiene resistencia (0.4 = se mueve 40% del delta)
+        // Todos los demas: siguen completamente (0.85 = se mueven 85% del delta)
+        let elasticity: number;
+        if (rowDistance === 1) {
+          // Vecino directo - tiene peso/resistencia
+          elasticity = 0.35;
+        } else {
+          // Nodos mas lejanos - siguen sin resistencia, pero menos que el vecino
+          elasticity = 0.75;
+        }
         
         const elasticX = Math.max(pad, Math.min(size.w - pad, n.x + deltaX * elasticity));
         const elasticY = Math.max(pad, Math.min(size.h - pad, n.y + deltaY * elasticity));
