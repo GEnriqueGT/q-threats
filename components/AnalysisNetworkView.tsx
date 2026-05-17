@@ -10,6 +10,10 @@ import { MESH_GATHER_MS } from './MorphingNeuralMesh';
 type SimNode = AnalysisNode & {
   x: number;
   y: number;
+  vx: number;
+  vy: number;
+  targetX: number;
+  targetY: number;
 };
 
 interface AnalysisNetworkViewProps {
@@ -28,9 +32,11 @@ export function AnalysisNetworkView({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragIdRef = useRef<string | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const animationRef = useRef<number | null>(null);
 
   const [size, setSize] = useState({ w: 1000, h: 600 });
   const [nodes, setNodes] = useState<SimNode[]>([]);
+  const nodesRef = useRef<SimNode[]>([]);
 
   // Filtrar nodos (excluir acquisition)
   const graphNodes = useMemo(
@@ -70,14 +76,83 @@ export function AnalysisNetworkView({
     if (neuralPhase !== 'gather' && neuralPhase !== 'ready') return;
     if (size.w < 200) return;
 
-    const initial: SimNode[] = graphNodes.map((n) => ({
-      ...n,
-      x: rowLayout[n.id]?.x ?? size.w * 0.5,
-      y: rowLayout[n.id]?.y ?? size.h * 0.42,
-    }));
+    const initial: SimNode[] = graphNodes.map((n) => {
+      const x = rowLayout[n.id]?.x ?? size.w * 0.5;
+      const y = rowLayout[n.id]?.y ?? size.h * 0.42;
+      return {
+        ...n,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        targetX: x,
+        targetY: y,
+      };
+    });
 
     setNodes(initial);
+    nodesRef.current = initial;
   }, [neuralPhase, size, graphNodes, rowLayout]);
+
+  // Physics simulation loop
+  useEffect(() => {
+    const SPRING = 0.08; // Spring stiffness
+    const DAMPING = 0.75; // Velocity damping
+    const pad = 60;
+
+    const tick = () => {
+      const currentNodes = nodesRef.current;
+      if (currentNodes.length === 0) {
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      let needsUpdate = false;
+      const updated = currentNodes.map((node, idx) => {
+        // If being dragged, target is set by drag handler
+        // Otherwise, apply spring physics toward target
+        
+        // Spring force toward target
+        const dx = node.targetX - node.x;
+        const dy = node.targetY - node.y;
+        
+        // Apply spring acceleration
+        let nvx = node.vx + dx * SPRING;
+        let nvy = node.vy + dy * SPRING;
+        
+        // Apply damping
+        nvx *= DAMPING;
+        nvy *= DAMPING;
+        
+        // Update position
+        let nx = node.x + nvx;
+        let ny = node.y + nvy;
+        
+        // Clamp to bounds
+        nx = Math.max(pad, Math.min(size.w - pad, nx));
+        ny = Math.max(pad, Math.min(size.h - pad, ny));
+        
+        // Check if significant movement
+        if (Math.abs(nvx) > 0.01 || Math.abs(nvy) > 0.01 || Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          needsUpdate = true;
+        }
+        
+        return { ...node, x: nx, y: ny, vx: nvx, vy: nvy };
+      });
+
+      if (needsUpdate) {
+        nodesRef.current = updated;
+        setNodes(updated);
+      }
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [size]);
 
   const meshAnchors = useMemo((): MeshAnchor[] => {
     const list: MeshAnchor[] = [];
@@ -98,7 +173,7 @@ export function AnalysisNetworkView({
 
   // Drag handlers
   const handleDragStart = useCallback((id: string, clientX: number, clientY: number) => {
-    const node = nodes.find((n) => n.id === id);
+    const node = nodesRef.current.find((n) => n.id === id);
     if (!node) return;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -107,7 +182,7 @@ export function AnalysisNetworkView({
       x: clientX - rect.left - node.x,
       y: clientY - rect.top - node.y,
     };
-  }, [nodes]);
+  }, []);
 
   const handleDragMove = useCallback((clientX: number, clientY: number) => {
     if (!dragIdRef.current) return;
@@ -117,40 +192,56 @@ export function AnalysisNetworkView({
     const newX = Math.max(pad, Math.min(size.w - pad, clientX - rect.left - dragOffsetRef.current.x));
     const newY = Math.max(pad, Math.min(size.h - pad, clientY - rect.top - dragOffsetRef.current.y));
     
-    setNodes((prev) => {
-      const draggedIdx = prev.findIndex((n) => n.id === dragIdRef.current);
-      if (draggedIdx === -1) return prev;
-      const draggedNode = prev[draggedIdx];
+    // Update targets for chain physics
+    const currentNodes = nodesRef.current;
+    const draggedIdx = currentNodes.findIndex((n) => n.id === dragIdRef.current);
+    if (draggedIdx === -1) return;
+    
+    const updated = currentNodes.map((node, idx) => {
+      if (node.id === dragIdRef.current) {
+        // Dragged node moves directly to mouse position
+        return { ...node, x: newX, y: newY, targetX: newX, targetY: newY, vx: 0, vy: 0 };
+      }
       
-      const deltaX = newX - draggedNode.x;
-      const deltaY = newY - draggedNode.y;
+      const rowDistance = Math.abs(idx - draggedIdx);
       
-      // Fisica de cadena: el nodo arrastrado mueve a todos
-      // Solo el vecino inmediato tiene resistencia (se mueve menos)
-      // Los nodos mas lejanos siguen completamente al vecino
-      return prev.map((n, idx) => {
-        if (n.id === dragIdRef.current) {
-          return { ...n, x: newX, y: newY };
+      // Chain physics: 
+      // - Neighbor has resistance (follows with delay/spring)
+      // - Far nodes follow the neighbor (cascading effect)
+      let newTargetX = node.targetX;
+      let newTargetY = node.targetY;
+      
+      if (rowDistance === 1) {
+        // Direct neighbor: follows dragged node with some offset to create tension
+        const draggedNode = currentNodes[draggedIdx];
+        const deltaX = newX - draggedNode.x;
+        const deltaY = newY - draggedNode.y;
+        // Neighbor's target moves toward dragged node but with resistance
+        newTargetX = node.targetX + deltaX * 0.6;
+        newTargetY = node.targetY + deltaY * 0.6;
+      } else if (rowDistance > 1) {
+        // Far nodes: follow their neighbor in the chain (toward dragged)
+        const neighborIdx = idx < draggedIdx ? idx + 1 : idx - 1;
+        const neighbor = currentNodes[neighborIdx];
+        if (neighbor) {
+          // Follow neighbor's current position with less resistance
+          const deltaX = neighbor.x - node.x;
+          const deltaY = neighbor.y - node.y;
+          // Maintain some distance but follow
+          const idealDist = 180;
+          const currentDist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+          if (currentDist > 0) {
+            const factor = (currentDist - idealDist) / currentDist;
+            newTargetX = node.x + deltaX * factor * 0.8;
+            newTargetY = node.y + deltaY * factor * 0.8;
+          }
         }
-        
-        const rowDistance = Math.abs(idx - draggedIdx);
-        
-        // Vecino inmediato: tiene resistencia (0.4 = se mueve 40% del delta)
-        // Todos los demas: siguen completamente (0.85 = se mueven 85% del delta)
-        let elasticity: number;
-        if (rowDistance === 1) {
-          // Vecino directo - tiene peso/resistencia
-          elasticity = 0.35;
-        } else {
-          // Nodos mas lejanos - siguen sin resistencia, pero menos que el vecino
-          elasticity = 0.75;
-        }
-        
-        const elasticX = Math.max(pad, Math.min(size.w - pad, n.x + deltaX * elasticity));
-        const elasticY = Math.max(pad, Math.min(size.h - pad, n.y + deltaY * elasticity));
-        return { ...n, x: elasticX, y: elasticY };
-      });
+      }
+      
+      return { ...node, targetX: newTargetX, targetY: newTargetY };
     });
+    
+    nodesRef.current = updated;
   }, [size]);
 
   const handleDragEnd = useCallback(() => {
