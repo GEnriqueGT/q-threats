@@ -412,10 +412,12 @@ export function AnalysisNetworkView({
                   <p className="text-white/60 text-sm">{analysis.acquisition.summary}</p>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-teal-300 font-semibold">
-                      Q{analysis.acquisition.amount?.toLocaleString() || '2,000,000'}
+                      {analysis.acquisition.amount || 'Q2,000,000'}
                     </span>
                     <span className="text-white/40">|</span>
-                    <span className="text-white/50">Compra Directa</span>
+                    <span className="text-white/50">
+                      {analysis.acquisition.date || '15 Feb 2026'}
+                    </span>
                   </div>
                 </div>
 

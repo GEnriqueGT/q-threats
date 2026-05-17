@@ -40,6 +40,7 @@ export const threatAnalyses: Record<string, ThreatAnalysis> = {
       guatecomprasUrl: GUATECOMPRAS_T1,
       institution: 'INACIF',
       amount: 'Q2,000,000',
+      date: '15 Feb 2026',
     },
     nodes: [
       {

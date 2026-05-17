@@ -34,6 +34,7 @@ export interface ThreatAnalysis {
     guatecomprasUrl: string;
     institution: string;
     amount: string;
+    date?: string;
   };
   nodes: AnalysisNode[];
   edges: { from: string; to: string }[];
