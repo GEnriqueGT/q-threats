@@ -29,8 +29,10 @@ export function NeuralWorldCanvas({
 }: NeuralWorldCanvasProps) {
   if (!visible) return null;
 
+  const isDashboard = phase === 'idle-left';
+
   return (
-    <div className="absolute inset-0 z-[2] pointer-events-none">
+    <div className="absolute inset-0 z-[2] pointer-events-auto" style={{ pointerEvents: isDashboard ? 'auto' : 'none' }}>
       <Canvas
         className="!w-full !h-full"
         camera={{ position: [0, 0, 5.5], fov: 48 }}

@@ -226,12 +226,13 @@ export function MorphingNeuralMesh({
       groupRef.current.position.copy(_groupPos);
 
       if (isDashboard) {
-        groupRef.current.rotation.y += 0.0012;
-        groupRef.current.rotation.x += 0.0004;
-        const px = state.pointer.x * 0.04;
-        const py = state.pointer.y * 0.04;
-        groupRef.current.rotation.y += (px - groupRef.current.rotation.y) * 0.015;
-        groupRef.current.rotation.x += (py - groupRef.current.rotation.x) * 0.015;
+        groupRef.current.rotation.y += 0.0008;
+        groupRef.current.rotation.x += 0.0003;
+        // Enhanced mouse interaction - more responsive to hover
+        const targetRotY = state.pointer.x * Math.PI * 0.25;
+        const targetRotX = state.pointer.y * Math.PI * 0.15;
+        groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.03;
+        groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.03;
       }
     }
 
