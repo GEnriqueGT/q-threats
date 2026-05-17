@@ -113,10 +113,23 @@ export function MorphingNeuralMesh({
 
   const pointsGeoRef = useRef<THREE.BufferGeometry>(null);
   const linesGeoRef = useRef<THREE.BufferGeometry>(null);
+  const pointsMaterialRef = useRef<THREE.PointsMaterial>(null);
   const phaseStart = useRef(performance.now());
   const prevPhase = useRef<MeshPhase>(phase);
   const splitScratch = useRef<Float32Array | null>(null);
   const stretchedScratch = useRef<Float32Array | null>(null);
+  
+  // Arrays para animacion de parpadeo de vertices
+  const vertexOffsets = useMemo(() => {
+    const offsets = new Float32Array(SPHERE_POINT_COUNT * 3);
+    for (let i = 0; i < SPHERE_POINT_COUNT; i++) {
+      // Valores aleatorios para offset de fase de cada vertice
+      offsets[i * 3] = Math.random() * Math.PI * 2; // fase
+      offsets[i * 3 + 1] = 0.3 + Math.random() * 0.7; // velocidad
+      offsets[i * 3 + 2] = Math.random(); // intensidad de parpadeo
+    }
+    return offsets;
+  }, []);
 
   useEffect(() => {
     if (prevPhase.current !== phase) {
@@ -203,9 +216,21 @@ export function MorphingNeuralMesh({
         }
         sim.step(screenAnchors, connectorEdges, project, delta, true);
         positions.set(sim.positions);
-        const breathe = Math.sin(performance.now() * 0.0007) * 0.004;
+        
+        // Animacion de ondulacion organica de la malla
+        const time = performance.now() * 0.001;
         for (let i = 0; i < analysisMesh.pointCount; i++) {
-          positions[i * 3 + 2] += breathe * ((i % 5) - 2);
+          const phase1 = vertexOffsets[i % vertexOffsets.length];
+          const speed = vertexOffsets[(i * 3 + 1) % vertexOffsets.length];
+          
+          // Ondulacion suave en X e Y
+          const waveX = Math.sin(time * speed * 0.8 + phase1 + i * 0.1) * 0.008;
+          const waveY = Math.cos(time * speed * 0.6 + phase1 * 1.3 + i * 0.15) * 0.006;
+          const waveZ = Math.sin(time * speed * 0.5 + phase1 * 0.7) * 0.01;
+          
+          positions[i * 3] += waveX;
+          positions[i * 3 + 1] += waveY;
+          positions[i * 3 + 2] += waveZ;
         }
       }
     }
@@ -238,12 +263,43 @@ export function MorphingNeuralMesh({
 
     linePositions.set(positions.subarray(0, pointCount * 3));
 
+    // Animacion de parpadeo de vertices (solo en modo ready/analisis)
+    const pm = pointsMaterialRef.current;
+    if (pm && !isDashboard) {
+      const time = performance.now() * 0.002;
+      const basePulse = 0.55 + Math.sin(time * 0.5) * 0.15;
+      pm.opacity = basePulse;
+    }
+    
+    // Parpadeo individual de vertices
+    if (!isDashboard) {
+      const time = performance.now() * 0.001;
+      for (let i = 0; i < Math.min(pointCount, vertexColors.length / 3); i++) {
+        const phase = vertexOffsets[(i * 3) % vertexOffsets.length];
+        const speed = vertexOffsets[(i * 3 + 1) % vertexOffsets.length];
+        const intensity = vertexOffsets[(i * 3 + 2) % vertexOffsets.length];
+        
+        // Algunos vertices parpadean mas que otros
+        const pulse = 0.6 + Math.sin(time * speed * 2 + phase) * 0.4 * intensity;
+        vertexColors[i * 3] = pulse;
+        vertexColors[i * 3 + 1] = pulse;
+        vertexColors[i * 3 + 2] = pulse;
+      }
+    }
+
     const pg = pointsGeoRef.current;
     const lg = linesGeoRef.current;
     if (pg?.attributes.position) {
       const attr = pg.attributes.position as THREE.BufferAttribute;
       attr.array.set(positions.subarray(0, pointCount * 3));
       attr.needsUpdate = true;
+      
+      // Actualizar colores para parpadeo individual
+      if (!isDashboard && pg.attributes.color) {
+        const colorAttr = pg.attributes.color as THREE.BufferAttribute;
+        colorAttr.array.set(vertexColors.subarray(0, pointCount * 3));
+        colorAttr.needsUpdate = true;
+      }
     }
     if (lg?.attributes.position) {
       const attr = lg.attributes.position as THREE.BufferAttribute;
@@ -253,6 +309,12 @@ export function MorphingNeuralMesh({
     }
   });
 
+  // Colores para parpadeo individual de vertices
+  const vertexColors = useMemo(() => {
+    const count = Math.max(SPHERE_POINT_COUNT, 500);
+    return new Float32Array(count * 3).fill(1);
+  }, []);
+  
   const initialIndices = dashboardMesh.lineIndices;
 
   return (
@@ -260,11 +322,14 @@ export function MorphingNeuralMesh({
       <points>
         <bufferGeometry ref={pointsGeoRef}>
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+          <bufferAttribute attach="attributes-color" args={[vertexColors, 3]} />
         </bufferGeometry>
         <pointsMaterial
+          ref={pointsMaterialRef}
           map={pointTexture}
-          size={isDashboard ? 0.052 : 0.042}
+          size={isDashboard ? 0.052 : 0.048}
           color="#9eb8ae"
+          vertexColors={!isDashboard}
           transparent
           opacity={isDashboard ? 0.72 : 0.68}
           sizeAttenuation

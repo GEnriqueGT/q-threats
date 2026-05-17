@@ -116,9 +116,30 @@ export function AnalysisNetworkView({
     const pad = 60;
     const newX = Math.max(pad, Math.min(size.w - pad, clientX - rect.left - dragOffsetRef.current.x));
     const newY = Math.max(pad, Math.min(size.h - pad, clientY - rect.top - dragOffsetRef.current.y));
-    setNodes((prev) =>
-      prev.map((n) => (n.id === dragIdRef.current ? { ...n, x: newX, y: newY } : n))
-    );
+    
+    setNodes((prev) => {
+      const draggedNode = prev.find((n) => n.id === dragIdRef.current);
+      if (!draggedNode) return prev;
+      
+      const deltaX = newX - draggedNode.x;
+      const deltaY = newY - draggedNode.y;
+      
+      // Elasticidad: los nodos conectados se mueven un poco
+      return prev.map((n) => {
+        if (n.id === dragIdRef.current) {
+          return { ...n, x: newX, y: newY };
+        }
+        // Calcular distancia al nodo arrastrado
+        const dist = Math.sqrt(
+          Math.pow(n.x - draggedNode.x, 2) + Math.pow(n.y - draggedNode.y, 2)
+        );
+        // Factor de elasticidad basado en la distancia (mas cerca = mas efecto)
+        const elasticity = Math.max(0, 1 - dist / 600) * 0.25;
+        const elasticX = Math.max(pad, Math.min(size.w - pad, n.x + deltaX * elasticity));
+        const elasticY = Math.max(pad, Math.min(size.h - pad, n.y + deltaY * elasticity));
+        return { ...n, x: elasticX, y: elasticY };
+      });
+    });
   }, [size]);
 
   const handleDragEnd = useCallback(() => {
