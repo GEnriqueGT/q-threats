@@ -38,6 +38,7 @@ export function HomePage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [neuralPhase, setNeuralPhase] = useState<MeshPhase>('idle-left');
   const [size, setSize] = useState({ w: 1200, h: 800 });
+  const [analysisPanelOpen, setAnalysisPanelOpen] = useState(true);
 
   const updateSphereFocus = useCallback(() => {
     const root = mainRef.current;
@@ -123,6 +124,7 @@ export function HomePage() {
   const backToDashboard = useCallback(() => {
     setView('dashboard');
     setAnalysis(null);
+    setAnalysisPanelOpen(true);
   }, []);
 
   return (
@@ -134,6 +136,7 @@ export function HomePage() {
         phase={neuralPhase}
         size={size}
         sphereFocus={sphereFocus}
+        analysisPanelOpen={analysisPanelOpen}
         visible={view === 'dashboard' || view === 'analysis'}
       />
 
@@ -214,6 +217,7 @@ export function HomePage() {
                   analysis={analysis}
                   onBack={backToDashboard}
                   neuralPhase={neuralPhase}
+                  onPanelToggle={setAnalysisPanelOpen}
                 />
               )}
             </motion.div>

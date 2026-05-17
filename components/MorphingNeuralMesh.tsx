@@ -20,6 +20,7 @@ interface MorphingNeuralMeshProps {
   phase: MeshPhase;
   size: { w: number; h: number };
   sphereFocus?: { x: number; y: number } | null;
+  analysisPanelOpen?: boolean;
 }
 
 export const MESH_TRANSIT_MS = 850;
@@ -52,6 +53,7 @@ export function MorphingNeuralMesh({
   phase,
   size,
   sphereFocus,
+  analysisPanelOpen = true,
 }: MorphingNeuralMeshProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -113,7 +115,13 @@ export function MorphingNeuralMesh({
 
     const focusPx = sphereFocus ?? { x: size.w * 0.25, y: size.h * 0.46 };
     _focusWorld.copy(screenToWorld(focusPx.x, focusPx.y, w, h, camera));
-    _centerWorld.set(0, 0, 0);
+    
+    // Centro de analisis: a la izquierda si el panel esta abierto, centrado si esta cerrado
+    const analysisCenterX = analysisPanelOpen ? size.w * 0.32 : size.w * 0.5;
+    const analysisCenterY = size.h * 0.48;
+    const _analysisWorld = screenToWorld(analysisCenterX, analysisCenterY, w, h, camera);
+    
+    _centerWorld.copy(_analysisWorld);
 
     if (groupRef.current) {
       if (phase === 'idle-left') {
@@ -122,7 +130,9 @@ export function MorphingNeuralMesh({
         const t = easeInOutCubic(Math.min(1, elapsed / MESH_TRANSIT_MS));
         _groupPos.lerpVectors(_focusWorld, _centerWorld, t);
       } else {
-        _groupPos.copy(_centerWorld);
+        // Modo analisis: interpolar hacia la posicion de analisis
+        const lerpFactor = 0.08;
+        _groupPos.lerp(_centerWorld, lerpFactor);
       }
       groupRef.current.position.copy(_groupPos);
 
