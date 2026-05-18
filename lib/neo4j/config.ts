@@ -1,33 +1,45 @@
 /** Variables de entorno del servidor para Neo4j (ver `.env.example`). */
 
-function firstEnv(...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const v = process.env[key]?.trim();
-    if (v) return v;
+const URI_ENV_KEYS = ['NEO4J_URI', 'NE04J_URI', 'NEO4J_CONNECTION_URI'] as const;
+
+function cleanEnv(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  let s = value.trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
   }
-  return undefined;
+  return s || undefined;
 }
 
 function isValidNeo4jUri(uri: string): boolean {
   return /^(neo4j|bolt)(\+s)?:\/\//i.test(uri);
 }
 
+/** Primera URI válida entre las claves conocidas (ignora NEO4J_URL con https). */
 export function getNeo4jUri(): string | undefined {
-  // NE04J_URI = typo frecuente (cero en lugar de letra O)
-  const uri = firstEnv('NEO4J_URI', 'NE04J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
-  if (!uri || !isValidNeo4jUri(uri)) return undefined;
-  return uri;
+  for (const key of URI_ENV_KEYS) {
+    const v = cleanEnv(process.env[key]);
+    if (v && isValidNeo4jUri(v)) return v;
+  }
+  return undefined;
 }
 
-/** URI presente pero con formato incorrecto (p. ej. https://api.example.com). */
-export function getInvalidNeo4jUriHint(): string | undefined {
-  const raw = firstEnv('NEO4J_URI', 'NE04J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
-  if (!raw || isValidNeo4jUri(raw)) return undefined;
-  return raw;
+/** Variables con valor presente pero formato incorrecto (para el mensaje de error). */
+export function getInvalidNeo4jUriKeys(): string[] {
+  const bad: string[] = [];
+  const scan = [...URI_ENV_KEYS, 'NEO4J_URL'] as const;
+  for (const key of scan) {
+    const v = cleanEnv(process.env[key]);
+    if (v && !isValidNeo4jUri(v)) bad.push(key);
+  }
+  return bad;
 }
 
 export function getNeo4jUser(): string | undefined {
-  return firstEnv('NEO4J_USER', 'NEO4J_USERNAME');
+  return cleanEnv(process.env.NEO4J_USER) ?? cleanEnv(process.env.NEO4J_USERNAME);
 }
 
 export function getNeo4jPassword(): string | undefined {
@@ -40,8 +52,11 @@ export function getNeo4jPassword(): string | undefined {
 export function getMissingNeo4jEnvVars(): string[] {
   const missing: string[] = [];
   if (!getNeo4jUri()) {
-    if (getInvalidNeo4jUriHint()) {
-      missing.push('NEO4J_URI (valor inválido: debe ser neo4j+s://… o bolt://…, no https://)');
+    const invalidKeys = getInvalidNeo4jUriKeys();
+    if (invalidKeys.length > 0) {
+      missing.push(
+        `NEO4J_URI válida (tienes ${invalidKeys.join(', ')} con https:// o formato incorrecto; bórralas o corrígelas)`,
+      );
     } else {
       missing.push('NEO4J_URI');
     }
@@ -63,8 +78,6 @@ export function getNeo4jDatabase(): string | undefined {
 
 /**
  * Número máximo de aristas a leer, o `null` = sin LIMIT en la query por defecto (grafo completo).
- * `NEO4J_REL_LIMIT=0` o vacío → sin tope (hasta el límite duro de seguridad interno en el driver).
- * Un entero positivo recorta el resultado (útil si la base es enorme).
  */
 export function getNeo4jRelationshipLimit(): number | null {
   const raw = process.env.NEO4J_REL_LIMIT?.trim();
