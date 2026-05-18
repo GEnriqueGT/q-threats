@@ -328,6 +328,7 @@ La arquitectura está diseñada para:
 - **Documentación:** [https://genriquegt.github.io/q-threats/#/](https://genriquegt.github.io/q-threats/#/)
 - **Video demo:** [https://youtu.be/ROHDlXTwD_I](https://youtu.be/ROHDlXTwD_I)
 - **Pitch:** [https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o](https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o)
+- **Carta de interes:** [https://docs.google.com/document/d/1Xc0ZHvPieb9tTpH3FALozaE3QMuCWcaY/edit?usp=sharing&ouid=115141051660330980025&rtpof=true&sd=true)
 
 ---
 
