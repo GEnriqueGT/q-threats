@@ -44,9 +44,10 @@ export default function DocsPage() {
           <section className="glass rounded-2xl p-6 md:p-8">
             <h2 className="text-xl font-semibold text-white mb-4">API (Route Handlers)</h2>
             <p className="text-white/65 text-sm mb-6 leading-relaxed">
-              Todas sirven datos estáticos desde <code className="rounded bg-black/35 px-1.5 py-0.5">lib/data.ts</code> y
-              modulos relacionados. La ruta <code className="rounded bg-black/35 px-1.5 py-0.5">GET /api/graph</code> expone el
-              grafo completo desde Neo4j cuando NEO4J_URI, NEO4J_USER y NEO4J_PASSWORD estan definidos (sin fallback estático).
+              Datos desde <code className="rounded bg-black/35 px-1.5 py-0.5">lib/data.ts</code> y modulos relacionados.{' '}
+              <code className="rounded bg-black/35 px-1.5 py-0.5">GET /api/graph</code> es solo Neo4j (503 si no hay env). Para MCP y
+              clientes que necesiten grafo sin Neo4j en servidor, usar{' '}
+              <code className="rounded bg-black/35 px-1.5 py-0.5">GET /api/mcp/graph-snapshot</code> (Neo4j o fallback demo).
             </p>
             <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/25">
               <table className="w-full border-collapse text-left text-sm">
@@ -58,11 +59,13 @@ export default function DocsPage() {
                 </thead>
                 <tbody className="text-white/80">
                   {[
-                    ['GET /api/threats', 'Ultimas amenazas de muestra'],
+                    ['GET /api/threats', 'Amenazas de muestra (?q= ?level= ?limit= opcional)'],
                     ['GET /api/nodes ?ids=', 'Detalle de nodos para la red'],
                     ['GET /api/departments', 'Lista de departamentos (Guatemala)'],
                     ['GET /api/analysis/[threatId]', 'Detalle por amenaza'],
-                    ['GET /api/graph', 'Grafo Neo4j completo (requiere env)'],
+                    ['GET /api/graph', 'Grafo Neo4j completo (requiere env; sin fallback)'],
+                    ['GET /api/mcp/graph-snapshot', 'Grafo para MCP: Neo4j en servidor o fallback demo'],
+                    ['GET /api/mcp/context-pack', 'Texto de contexto del chat (amenazas + grafo)'],
                   ].map(([path, desc]) => (
                     <tr key={path} className="border-b border-white/5">
                       <td className="px-4 py-3 font-mono text-xs whitespace-nowrap text-teal-200/90">{path}</td>

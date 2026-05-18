@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "q-threats": {
+      "command": "npm",
+      "args": ["run", "mcp:stdio"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "Q_THREATS_BACKEND_URL": "https://q-threats.vercel.app"
+      }
+    }
+  }
+}

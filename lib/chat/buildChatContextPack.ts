@@ -1,8 +1,5 @@
 import { threats, threatAnalyses } from '@/lib/data';
-import { buildGlobalRelationsThreatAnalysis } from '@/lib/globalGraph';
-import { isNeo4jConfigured } from '@/lib/neo4j/config';
-import { fetchThreatAnalysisFromNeo4j } from '@/lib/neo4j/fetchThreatAnalysisFromNeo4j';
-import type { ThreatAnalysis } from '@/lib/types';
+import { loadThreatAnalysisSnapshot } from '@/lib/mcp/loadThreatAnalysisSnapshot';
 
 const MAX_NODE_LINES = 55;
 const MAX_EDGE_LINES = 70;
@@ -12,23 +9,6 @@ function clip(s: string, max: number): string {
   const t = s.trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
-}
-
-async function loadThreatAnalysisForChat(): Promise<{ analysis: ThreatAnalysis; sourceLabel: string }> {
-  if (isNeo4jConfigured()) {
-    try {
-      const neo = await fetchThreatAnalysisFromNeo4j();
-      if (neo) {
-        return { analysis: neo, sourceLabel: 'Neo4j (misma fuente que GET /api/graph)' };
-      }
-    } catch {
-      /* fallback below */
-    }
-  }
-  return {
-    analysis: buildGlobalRelationsThreatAnalysis(),
-    sourceLabel: 'Datos demo consolidados (lib/data.ts + grafo global sintético)',
-  };
 }
 
 /** Quita bloques de razonamiento que algunos modelos MiniMax incluyen en `content`. */
@@ -58,7 +38,7 @@ export async function buildChatContextPack(): Promise<string> {
     }
   }
 
-  const { analysis, sourceLabel } = await loadThreatAnalysisForChat();
+  const { analysis, sourceLabel } = await loadThreatAnalysisSnapshot();
   lines.push('');
   lines.push(`## Grafo de relaciones · fuente: ${sourceLabel}`);
   lines.push(`Resumen meta: ${clip(analysis.acquisition.summary, MAX_SUMMARY_CHARS)}`);

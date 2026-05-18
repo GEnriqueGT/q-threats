@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
   title: 'MCP — Q Threats',
-  description: 'Model Context Protocol y cómo conectarlo en Cursor.',
+  description: 'Conectar Cursor al MCP de Q Threats (URL del backend y herramientas).',
 };
 
 export default function McpLayout({ children }: { children: ReactNode }) {

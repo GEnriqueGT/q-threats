@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
+    "mcp:stdio": "tsx mcp/server.ts",
     "generate:departments": "node scripts/generate-department-paths.mjs"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/postcss": "^4.1.14",
     "@types/d3-force": "^3.0.10",
     "@types/d3-selection": "^3.0.11",
@@ -35,8 +37,11 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "d3-geo": "^3.1.1",
+    "dotenv": "^17.4.2",
     "tailwindcss": "^4.1.14",
     "topojson-client": "^3.1.0",
-    "typescript": "~5.8.2"
+    "tsx": "^4.22.1",
+    "typescript": "~5.8.2",
+    "zod": "^4.4.3"
   }
 }
