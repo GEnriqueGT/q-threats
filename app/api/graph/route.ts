@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
-import { isNeo4jConfigured } from '@/lib/neo4j/config';
+import { getMissingNeo4jEnvVars, isNeo4jConfigured } from '@/lib/neo4j/config';
 import { fetchThreatAnalysisFromNeo4j } from '@/lib/neo4j/fetchThreatAnalysisFromNeo4j';
+
+/** Siempre leer env en runtime (Vercel inyecta vars al desplegar, no en build). */
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
  * Grafo completo desde Neo4j únicamente (sin fallback estático).
  */
 export async function GET() {
   if (!isNeo4jConfigured()) {
+    const missing = getMissingNeo4jEnvVars();
     return NextResponse.json(
       {
-        error:
-          'Neo4j no está configurado. Define NEO4J_URI, NEO4J_USER y NEO4J_PASSWORD en .env.local.',
+        error: `Neo4j no está configurado en este despliegue. Faltan: ${missing.join(', ')}. En Vercel: Settings → Environment Variables → marca Production y Preview → Redeploy obligatorio.`,
+        missing,
       },
       { status: 503 },
     );

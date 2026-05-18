@@ -1,10 +1,39 @@
 /** Variables de entorno del servidor para Neo4j (ver `.env.example`). */
 
+function firstEnv(...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const v = process.env[key]?.trim();
+    if (v) return v;
+  }
+  return undefined;
+}
+
+export function getNeo4jUri(): string | undefined {
+  return firstEnv('NEO4J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
+}
+
+export function getNeo4jUser(): string | undefined {
+  return firstEnv('NEO4J_USER', 'NEO4J_USERNAME');
+}
+
+export function getNeo4jPassword(): string | undefined {
+  const v = process.env.NEO4J_PASSWORD ?? process.env.NEO4J_SECRET;
+  if (v === undefined) return undefined;
+  return v;
+}
+
+/** Lista qué variables faltan (para mensajes de error en Vercel/local). */
+export function getMissingNeo4jEnvVars(): string[] {
+  const missing: string[] = [];
+  if (!getNeo4jUri()) missing.push('NEO4J_URI');
+  if (!getNeo4jUser()) missing.push('NEO4J_USER (o NEO4J_USERNAME)');
+  const pwd = getNeo4jPassword();
+  if (pwd === undefined || pwd.length === 0) missing.push('NEO4J_PASSWORD');
+  return missing;
+}
+
 export function isNeo4jConfigured(): boolean {
-  const uri = process.env.NEO4J_URI?.trim();
-  const user = process.env.NEO4J_USER?.trim();
-  const password = process.env.NEO4J_PASSWORD;
-  return Boolean(uri && user && password !== undefined && password.length > 0);
+  return getMissingNeo4jEnvVars().length === 0;
 }
 
 export function getNeo4jDatabase(): string | undefined {

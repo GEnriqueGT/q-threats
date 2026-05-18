@@ -1,5 +1,5 @@
 import neo4j, { Driver } from 'neo4j-driver';
-import { isNeo4jConfigured } from './config';
+import { getNeo4jPassword, getNeo4jUri, getNeo4jUser, isNeo4jConfigured } from './config';
 
 let driverInstance: Driver | null = null;
 
@@ -9,9 +9,9 @@ export function getNeo4jDriver(): Driver | null {
     return null;
   }
   if (!driverInstance) {
-    const uri = process.env.NEO4J_URI!.trim();
-    const user = process.env.NEO4J_USER!.trim();
-    const password = process.env.NEO4J_PASSWORD!;
+    const uri = getNeo4jUri()!;
+    const user = getNeo4jUser()!;
+    const password = getNeo4jPassword()!;
     driverInstance = neo4j.driver(uri, neo4j.auth.basic(user, password));
   }
   return driverInstance;
