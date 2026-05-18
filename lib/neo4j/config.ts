@@ -8,8 +8,22 @@ function firstEnv(...keys: string[]): string | undefined {
   return undefined;
 }
 
+function isValidNeo4jUri(uri: string): boolean {
+  return /^(neo4j|bolt)(\+s)?:\/\//i.test(uri);
+}
+
 export function getNeo4jUri(): string | undefined {
-  return firstEnv('NEO4J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
+  // NE04J_URI = typo frecuente (cero en lugar de letra O)
+  const uri = firstEnv('NEO4J_URI', 'NE04J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
+  if (!uri || !isValidNeo4jUri(uri)) return undefined;
+  return uri;
+}
+
+/** URI presente pero con formato incorrecto (p. ej. https://api.example.com). */
+export function getInvalidNeo4jUriHint(): string | undefined {
+  const raw = firstEnv('NEO4J_URI', 'NE04J_URI', 'NEO4J_URL', 'NEO4J_CONNECTION_URI');
+  if (!raw || isValidNeo4jUri(raw)) return undefined;
+  return raw;
 }
 
 export function getNeo4jUser(): string | undefined {
@@ -25,7 +39,13 @@ export function getNeo4jPassword(): string | undefined {
 /** Lista qué variables faltan (para mensajes de error en Vercel/local). */
 export function getMissingNeo4jEnvVars(): string[] {
   const missing: string[] = [];
-  if (!getNeo4jUri()) missing.push('NEO4J_URI');
+  if (!getNeo4jUri()) {
+    if (getInvalidNeo4jUriHint()) {
+      missing.push('NEO4J_URI (valor inválido: debe ser neo4j+s://… o bolt://…, no https://)');
+    } else {
+      missing.push('NEO4J_URI');
+    }
+  }
   if (!getNeo4jUser()) missing.push('NEO4J_USER (o NEO4J_USERNAME)');
   const pwd = getNeo4jPassword();
   if (pwd === undefined || pwd.length === 0) missing.push('NEO4J_PASSWORD');
