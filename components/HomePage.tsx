@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MapGuatemala } from './MapGuatemala';
 import { ThreatItem } from './ThreatItem';
 import { LegislationSearch } from './LegislationSearch';
+import { AnalysisLoadingStatus } from './AnalysisLoadingStatus';
 import { AnalysisNetworkView } from './AnalysisNetworkView';
 import { NeuralWorldCanvas } from './NeuralWorldCanvas';
 import { useNeuralIntro } from '@/hooks/useNeuralIntro';
@@ -316,9 +317,7 @@ export function HomePage() {
               className="absolute inset-0 pointer-events-none"
             >
               {analysisLoading || !analysis ? (
-                <div className="absolute top-24 left-8 z-20 pointer-events-none">
-                  <p className="text-white/50 text-sm">Cargando datos...</p>
-                </div>
+                <AnalysisLoadingStatus />
               ) : (
                 <AnalysisNetworkView
                   analysis={analysis}
