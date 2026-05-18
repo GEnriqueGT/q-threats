@@ -2,166 +2,234 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Deploy](https://img.shields.io/badge/deploy-Vercel-000000?logo=vercel)](https://q-threats.vercel.app)
+[![Docs](https://img.shields.io/badge/docs-Docsify-green)](https://genriquegt.github.io/q-threats/#/)
+[![Demo Video](https://img.shields.io/badge/demo-YouTube-red?logo=youtube)](https://youtu.be/ROHDlXTwD_I)
+[![Pitch](https://img.shields.io/badge/pitch-deck-orange)](https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o)
 
-> Plataforma web para **gobernanza transparente** en Guatemala: conecta **compras públicas**, **actores políticos**, **iniciativas normativas** y **redes de relaciones** en una sola experiencia visual.
+> Plataforma open source de **inteligencia política y anticorrupción** para Guatemala: conecta personas políticamente expuestas, entidades gubernamentales, iniciativas de ley y casos documentados en un grafo interactivo — accesible para periodistas, investigadores y ciudadanos.
 
-**Contexto:** proyecto orientado a **hackathon** (track transparencia y anticorrupción): prioriza claridad de propuesta, **deploy público**, código **open source** y documentación reproducible.
-
-**Deploy en producción:** [https://q-threats.vercel.app](https://q-threats.vercel.app)
-
----
-
-## Pitch en 30 segundos
-
-La herramienta de asistencia para transparencia usa una **estructura basada en grafos** para conectar nodos (por ejemplo **diputados**, **entidades**, relaciones de tipo **RELACION** u homólogas según el origen de los datos) y **generar relaciones** entre actores y hechos públicos. El propósito es identificar **vínculos** que ayuden a descubrir **patrones**, **conexiones** y **riesgos** en la información analizada—como apoyo a periodistas, auditores y ciudadanía, **no** como veredicto legal.
-
-**En producción**, el flujo puede incluir **Make** (webhook) para recolectar y transformar información hacia **Neo4j** (p. ej. **Aura** u otro endpoint `bolt`/`neo4j`). Esta app **lee** ese grafo vía API y lo muestra en **Relations**; el chat y herramientas MCP pueden consumir el mismo backend. **Advertencia:** el repositorio incluye **datos de demostración** en `lib/data.ts`. Sin Neo4j ni integraciones configuradas, gran parte de la UI sigue funcionando con ese demo; el grafo “en vivo” y la legislatura vía Make dependen de variables de entorno.
-
----
-
-## Problema que aborda
-
-- La información sobre **adquisiciones**, **iniciativas** y **actores** está dispersa y es difícil de **enlazar** (personas, instituciones, relaciones declaradas o inferidas).
-- Ciudadanía y medios necesitan **contexto estructural** (quién con quién, qué sector toca, qué riesgos se señalan), no solo listados.
-
-## Enfoque (cómo lo resuelve)
-
-1. **Sectores y casos** — amenazas / análisis por id (demo) o iniciativas (cuando Make responde).
-2. **Proponentes y actores** — diputados ponentes, entidades, nodos de conflicto donde el modelo de datos lo permite.
-3. **Relaciones** — grafo 2D (Neo4j) y vistas de análisis 3D / red según la pantalla.
-4. **Riesgos y fuentes** — paneles con resúmenes; **chat** con *grounding* en un paquete de contexto (amenazas + snapshot de grafo cuando aplica).
-5. **API HTTP + MCP** — datos expuestos para integraciones y agentes sin exponer credenciales de base de datos en el cliente.
+| Recurso | URL |
+|---------|-----|
+| 🌐 Aplicación | [q-threats.vercel.app](https://q-threats.vercel.app) |
+| 📖 Documentación | [genriquegt.github.io/q-threats](https://genriquegt.github.io/q-threats/#/) |
+| 🎬 Video demo | [youtu.be/ROHDlXTwD_I](https://youtu.be/ROHDlXTwD_I) |
+| 🎤 Pitch | [sparrow-geyser-521.faces.site/6ukoe6yx9l4o](https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o) |
+| 💻 Repositorio | [github.com/GEnriqueGT/q-threats](https://github.com/GEnriqueGT/q-threats) |
 
 ---
 
-## Recolección y procesamiento (Make → Neo4j)
+## El problema
 
-Un flujo en **Make** puede actuar como intermediario: webhooks, transformación a JSON y escritura en **Neo4j**. Eso reduce trabajo manual y mantiene el grafo alimentado para la app.
+La información pública en Guatemala existe, pero está fragmentada en decenas de organismos del Estado con formatos incompatibles y sin posibilidad real de cruzar fuentes. Esta opacidad estructural protege entramados de corrupción: figuras que la narrativa mediática presenta como antagonistas pueden colaborar en intereses comunes sin que nadie lo detecte. **La falta de centralización de datos es, en sí misma, un mecanismo de impunidad.**
 
-| Paso | Rol |
-|------|-----|
-| Entrada | Webhook u orígenes conectados en Make |
-| Procesamiento | Limpieza, enriquecimiento, llamadas a servicios externos |
-| Salida | JSON estandarizado hacia el conector de grafo |
-| Persistencia | Neo4j (nodos y relaciones; p. ej. Aura en la nube) |
-
-**Diagrama del escenario** (añade la imagen al repo antes de presentar si aún no está):
-
-![Flujo Make → Neo4j (coloca el archivo en docs/make-flow.png)](docs/make-flow.png)
-
-*Si el archivo no existe todavía: guarda tu captura o export como `docs/make-flow.png` en la raíz del proyecto.*
+Q Threats rompe esa barrera convirtiendo datos públicos dispersos en un grafo de relaciones legible por cualquier persona.
 
 ---
 
-## Qué incluye la aplicación (rutas)
+## Cómo funciona: el pipeline completo
 
-| Ruta | Descripción |
-|------|-------------|
-| **`/`** (Threats) | Mapa de Guatemala por departamento, listado de amenazas (**demo** en `lib/data.ts`). Abre **análisis 3D** por amenaza. Búsqueda de **iniciativa** vía Make cuando `MAKE_*` está configurado. |
-| **`/relations`** | Grafo 2D interactivo desde **`GET /api/graph`** (**solo Neo4j**). Sin credenciales, error `503`. Búsqueda, expansión a vecinos, panel de nodo, accesibilidad por teclado. |
-| **`/chat`** | Asistente: el servidor inyecta contexto desde `buildChatContextPack` (Neo4j si está configurado y responde; si no, **snapshot demo**). Requiere **MiniMax** en el servidor para respuestas reales. |
-| **`/api-reference`** | Guía HTTP: URL base, **CORS**, tabla de endpoints, ejemplos `curl`. |
-| **`/docs`** | Redirección a la [documentación Docsify (GitHub Pages)](https://genriquegt.github.io/q-threats/#/). |
-| **`/mcp`** | Cómo conectar **Cursor** (u otro cliente) al servidor MCP **stdio** que llama al backend por HTTP. |
-
-### Deep links (compartir análisis)
-
-Parámetros en la página principal (ver `lib/analysisUrl.ts`):
-
-- `?amenaza=<threatId>` — abre análisis demo por id (ej. `t1`).
-- `?iniciativa=<id>` — dispara **búsqueda legislativa** (Make → análisis).
-
----
-
-## Arquitectura
-
-```mermaid
-flowchart LR
-  subgraph ingest [Orquestacion]
-    Make[Make_webhook]
-  end
-  subgraph store [Grafo]
-    Neo4j[Neo4j_Bolt]
-  end
-  subgraph app [Nextjs]
-    API[Route_handlers]
-    UI[React_UI]
-  end
-  Make --> Neo4j
-  UI --> API
-  API --> Neo4j
+```
+Fuentes oficiales del Estado
+(Diario de Centroamérica, compras públicas,
+registro de empresas, partidos políticos…)
+         │
+         ▼
+┌────────────────────────┐
+│   Make  (scraping +    │  Ciclo automatizado de recolección.
+│   automatizaciones)    │  Webhooks, limpieza y transformación
+│                        │  del dato crudo a JSON estandarizado.
+└────────────────────────┘
+         │
+         ▼
+┌────────────────────────┐
+│       Supabase         │  Almacenamiento estructurado.
+│  (base de datos SQL)   │  Tabla law_risk_reports para reportes
+│                        │  de riesgo legislativo.
+└────────────────────────┘
+         │
+         ▼
+┌────────────────────────┐
+│        Neo4j           │  Base de datos de grafos.
+│   (graph database)     │  Nodos: PEPs, instituciones, casos,
+│                        │  partidos, beneficiarios, leyes.
+│                        │  Relaciones: TRABAJA_EN, RELACION…
+└────────────────────────┘
+         │
+         ▼
+┌────────────────────────┐
+│    Next.js + LLM       │  La app lee el grafo vía API.
+│  (frontend + API +     │  El chat inyecta un context pack
+│      chatbot)          │  desde Neo4j para respuestas
+│                        │  fundamentadas en datos reales.
+└────────────────────────┘
+         │
+    ┌────┴──────┐
+    ▼           ▼
+Chatbot      API REST + MCP
+(ciudadanos) (periodistas, investigadores,
+              integraciones externas)
 ```
 
-**Opcional:** **Supabase** alimenta `GET /api/recent-reports` (tabla `law_risk_reports`) cuando `SUPABASE_*` está definido.
+### 1 · Recolección — Make
+
+Un ciclo automatizado en **Make** scrappea periódicamente las páginas oficiales del Estado guatemalteco. Cada escenario actúa como intermediario: recibe vía webhook, limpia y enriquece el dato, y lo escribe como JSON estandarizado hacia el pipeline. Esto permite alimentar tanto Supabase como Neo4j sin intervención manual.
+
+### 2 · Almacenamiento estructurado — Supabase
+
+Los datos normalizados se persisten en **Supabase**. La tabla `law_risk_reports` concentra los reportes de riesgo sobre iniciativas legislativas. Cuando `SUPABASE_*` está configurado, `GET /api/recent-reports` sirve este contenido en tiempo real.
+
+### 3 · Grafo de relaciones — Neo4j
+
+El núcleo del sistema. Los nodos representan:
+
+| Tipo de nodo (`entityKind`) | Ejemplos |
+|-----------------------------|----------|
+| `person` | Diputados, rectores, funcionarios |
+| `institution` | Ministerios, universidades, entidades |
+| `case` | Casos legales activos (ej. Odebrecht) |
+| `party` | Bancadas y partidos políticos |
+| `beneficiary` | Beneficiarios ocultos de contratos |
+| `group` | Redes o estructuras detectadas |
+
+Neo4j entrelaza estos nodos con relaciones tipadas (ej. `TRABAJA_EN`, `RELACION`) creando un grafo que revela conexiones imposibles de detectar manualmente. La app lo consulta vía `neo4j-driver` y lo expone en `GET /api/graph`.
+
+### 4 · Inteligencia y acceso — LLM + MCP
+
+El grafo alimenta el **chatbot** (`/chat`) a través de un context pack construido en `lib/chat/buildChatContextPack.ts`: cuando Neo4j está configurado, el modelo recibe un snapshot real del grafo como contexto, permitiendo respuestas en lenguaje natural fundamentadas en datos verificables.
+
+Cada análisis o inferencia incluye el enlace a la fuente oficial original, **atribuyendo la autoría a sus respectivos autores**.
+
+---
+
+## Capacidades del sistema
+
+- **Detección de conflictos legislativos:** identifica iniciativas de ley promovidas por diputados ponentes con procesos legales activos por corrupción.
+- **Identificación de beneficiarios ocultos:** análisis de `posiblesBeneficiados` y beneficio privado por iniciativa.
+- **Mapeo de redes ocultas:** detecta colaboración entre figuras que la prensa presenta como antagonistas.
+- **Conexión con casos internacionales:** ej. vínculo detectado entre el rector de una universidad local y el caso Odebrecht.
+- **Análisis de proceso legislativo:** factores de riesgo y flags de proceso por iniciativa, con nivel de riesgo (`high`, `medium`, `low`, `possible`).
+- **Acceso universal:** desde el ciudadano promedio usando el chatbot hasta el investigador accediendo vía API o MCP.
 
 ---
 
 ## Stack tecnológico
 
-| Capa | Tecnología |
-|------|------------|
-| Framework | **Next.js 15** (App Router), **React 19**, **TypeScript** |
-| Estilo | **Tailwind CSS 4**, utilidades “glass / liquid glass” (`app/globals.css`) |
-| 3D | **Three.js**, **@react-three/fiber**, **@react-three/drei** |
-| Grafo 2D | **d3-force**, **d3-zoom**, **d3-selection** |
-| Grafo en servidor | **Neo4j** vía **neo4j-driver** |
-| Datos demo | `lib/data.ts` |
-| Legislativo | **Make** (webhook HTTP desde `lib/make/`) |
-| Reportes recientes | **Supabase** (`@supabase/supabase-js`) |
-| Chat | **MiniMax** API (clave solo en servidor) |
-| MCP local | **@modelcontextprotocol/sdk**, **tsx**, **zod**, **dotenv** (`mcp/server.ts`) |
-| CORS | **middleware** Next en `/api/*` |
+| Capa | Tecnología | Rol |
+|------|------------|-----|
+| Framework | **Next.js 15** (App Router) + **React 19** + **TypeScript** | Frontend y API |
+| Estilo | **Tailwind CSS 4** | UI, efectos glass (`app/globals.css`) |
+| Visualización 3D | **Three.js**, **@react-three/fiber**, **@react-three/drei** | Análisis orbital 3D por amenaza |
+| Grafo 2D | **d3-force**, **d3-zoom**, **d3-selection** | Vista `/relations` interactiva |
+| Base de datos de grafos | **Neo4j** vía `neo4j-driver` | Relaciones entre entidades |
+| Almacenamiento SQL | **Supabase** | Reportes legislativos (`law_risk_reports`) |
+| Automatización / Scraping | **Make** | Recolección y transformación de datos |
+| Chatbot | **MiniMax API** + context pack desde Neo4j | Consultas en lenguaje natural |
+| Integración | **MCP** (`@modelcontextprotocol/sdk`) | Acceso programático para agentes y editores |
 
 ---
 
-## Requisitos
+## Rutas de la aplicación
 
-- **Node.js** LTS (compatible con Next 15).
-- **npm**.
+| Ruta | Descripción |
+|------|-------------|
+| **`/`** | Mapa de Guatemala por departamento + listado de amenazas. Abre análisis 3D por amenaza o búsqueda de iniciativa vía Make. |
+| **`/relations`** | Grafo 2D interactivo desde Neo4j. Búsqueda, expansión a vecinos, panel de detalle de nodo, accesibilidad por teclado. |
+| **`/chat`** | Chatbot con contexto del grafo. Respuestas en lenguaje natural sobre personas, entidades y casos. |
+| **`/api-reference`** | Documentación interactiva de la API REST con ejemplos `curl`. |
+| **`/mcp`** | Instrucciones para conectar Cursor u otro cliente MCP al servidor stdio. |
+| **`/docs`** | Redirección a la [documentación Docsify](https://genriquegt.github.io/q-threats/#/). |
+
+**Deep links:**
+- `?amenaza=<threatId>` — abre análisis por id (ej. `?amenaza=t1`).
+- `?iniciativa=<id>` — dispara búsqueda legislativa vía Make.
 
 ---
 
-## Puesta en marcha (local)
+## API REST
 
-```bash
-npm install
-npm run dev
+Documentación interactiva en [`/api-reference`](https://q-threats.vercel.app/api-reference). Todas las rutas bajo `/api/*` exponen cabeceras CORS permisivas vía `middleware.ts`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/threats` | Lista de amenazas. Params: `q`, `level`, `limit`. |
+| GET | `/api/nodes` | Nodos del grafo. Param opcional: `ids`. |
+| GET | `/api/departments` | Departamentos de Guatemala. |
+| GET | `/api/analysis/[threatId]` | Análisis completo por amenaza (nodos + aristas + metadatos). |
+| GET | `/api/legislation/[id]` | Análisis legislativo por iniciativa desde Make. |
+| GET | `/api/recent-reports` | Reportes recientes desde Supabase. |
+| GET | `/api/graph` | Grafo completo desde Neo4j. `?check=1` diagnostica la conexión. |
+| GET | `/api/mcp/graph-snapshot` | Snapshot del grafo para integraciones (Neo4j o fallback demo). |
+| GET | `/api/mcp/context-pack` | Texto de contexto listo para inyectar en modelos. |
+| POST | `/api/chat` | Chat con el LLM. Body: `{ messages: [{ role, content }] }`. |
+
+---
+
+## MCP (Model Context Protocol)
+
+El proceso `npm run mcp:stdio` ejecuta `mcp/server.ts`: un servidor MCP que **solo llama al backend HTTP**, sin exponer credenciales de Neo4j al cliente MCP.
+
+**Herramientas disponibles:**
+
+| Herramienta | Descripción |
+|-------------|-------------|
+| `list_threats` | Lista amenazas con filtros opcionales de nivel y límite. |
+| `get_graph_snapshot` | Snapshot completo del grafo (nodos + aristas con truncamiento configurable). |
+| `get_node_neighborhood` | Vecindad de un nodo a profundidad N. |
+| `search_threats` | Búsqueda por texto en amenazas. |
+
+**Configuración en Cursor** (`.cursor/mcp.json` ya incluido en el repo):
+
+```json
+{
+  "mcpServers": {
+    "q-threats": {
+      "command": "npm",
+      "args": ["run", "mcp:stdio"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "Q_THREATS_BACKEND_URL": "https://q-threats.vercel.app"
+      }
+    }
+  }
+}
 ```
 
-Abre **http://localhost:3000** (puerto 3000).
+---
 
-- **Threats** y análisis **demo** funcionan **sin** Neo4j.
-- **`/relations`** necesita Neo4j (**503** si falta configuración).
-- **Chat** necesita `MINIMAX_API_KEY` para obtener respuestas del modelo.
-- **Iniciativas** via Make necesitan `MAKE_WEBHOOK_URL` y `MAKE_API_KEY`.
+## Puesta en marcha local
 
-Copia **`.env.example`** a **`.env.local`** y completa según las integraciones que uses. **No subas** `.env.local` al repositorio.
+```bash
+git clone https://github.com/GEnriqueGT/q-threats.git
+cd q-threats
+npm install
+cp .env.example .env.local   # completar variables según integraciones
+npm run dev                  # http://localhost:3000
+```
+
+- **Threats y análisis demo** funcionan **sin** Neo4j ni Make (datos de demostración en `lib/data.ts`).
+- **`/relations`** requiere Neo4j configurado (responde `503` si faltan variables).
+- **Chat** requiere `MINIMAX_API_KEY` para respuestas reales del modelo.
+- **Iniciativas legislativas** requieren `MAKE_WEBHOOK_URL` y `MAKE_API_KEY`.
 
 ### Documentación estática (Docsify)
 
-El repo incluye un sitio **Docsify** en la carpeta [`docs/`](docs/) (`index.html` + Markdown). Para previsualizarlo en local (puerto **3001** por defecto, distinto de Next):
-
 ```bash
-npm run docs:dev
+npm run docs:dev   # http://localhost:3001
 ```
-
-Útil para GitHub Pages (rama o carpeta `docs/`) o cualquier hosting estático sirviendo `docs/` con `index.html` como entrada.
 
 ---
 
-## Variables de entorno (referencia)
+## Variables de entorno
 
-| Área | Variables | Notas |
-|------|-----------|--------|
-| **Neo4j** | `NEO4J_URI` (también se aceptan alias listados en `lib/neo4j/config.ts`), `NEO4J_USER` o `NEO4J_USERNAME`, `NEO4J_PASSWORD` o `NEO4J_SECRET` | Obligatorias para `/api/graph` y para leer el grafo en chat/MCP snapshot cuando no hay fallback. |
-| | `NEO4J_DATABASE`, `NEO4J_REL_LIMIT`, `NEO4J_CYPHER` | Opcionales (Aura/Enterprise, límite de aristas, Cypher custom). |
-| | `NEO4J_ACQUISITION_TITLE`, `NEO4J_ACQUISITION_SUMMARY`, `NEO4J_ACQUISITION_LINK`, `NEO4J_ACQUISITION_INSTITUTION`, `NEO4J_ACQUISITION_AMOUNT`, `NEO4J_ACQUISITION_DATE` | Metadatos sintéticos del nodo “adquisición” en la proyección del grafo. |
-| **Make** | `MAKE_WEBHOOK_URL`, `MAKE_API_KEY` | Webhook que recibe `{ iniciativa_id }` y devuelve payload mapeable a `ThreatAnalysis`. |
-| **Supabase** | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` o `SUPABASE_SECRET_KEY` o `SUPABASE_ANON_KEY` | Si faltan, `GET /api/recent-reports` responde **503**. |
-| **Chat (MiniMax)** | `MINIMAX_API_KEY`, `MINIMAX_BASE_URL`, `MINIMAX_MODEL` | La clave es obligatoria para `/api/chat`; base URL y modelo tienen defaults en código. |
-| **MCP (solo proceso local)** | `Q_THREATS_BACKEND_URL` | Base del backend (p. ej. `http://127.0.0.1:3000` o el deploy). Default local si se omite. |
+| Área | Variables clave | Notas |
+|------|-----------------|-------|
+| **Neo4j** | `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Obligatorias para `/api/graph` y el context pack real. |
+| **Make** | `MAKE_WEBHOOK_URL`, `MAKE_API_KEY` | Webhook de iniciativas legislativas. |
+| **Supabase** | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Reportes recientes. |
+| **Chat** | `MINIMAX_API_KEY` | Obligatoria para `/api/chat`. |
+| **MCP** | `Q_THREATS_BACKEND_URL` | URL base del backend (default: `http://127.0.0.1:3000`). |
 
-Detalle comentado: **`.env.example`**.
+Ver `.env.example` para la lista completa con comentarios.
 
 ---
 
@@ -169,104 +237,98 @@ Detalle comentado: **`.env.example`**.
 
 | Script | Uso |
 |--------|-----|
-| `npm run dev` | Desarrollo en **http://localhost:3000**. |
-| `npm run dev:clean` | Limpia caché (`.next`, etc.) y arranca dev. |
+| `npm run dev` | Desarrollo en `http://localhost:3000`. |
+| `npm run dev:clean` | Limpia caché y arranca dev. |
 | `npm run build` / `npm start` | Producción. |
 | `npm run lint` | Typecheck (`tsc --noEmit`). |
-| `npm run clean` | Elimina `.next` y caché de herramientas. |
-| `npm run generate:departments` | Regenera SVG de departamentos → `public/departments/`. |
-| `npm run mcp:stdio` | Servidor MCP (stdio) que llama al backend HTTP; ver `/mcp`. |
-| `npm run docs:dev` | Docsify: documentación en `docs/` (puerto 3001). |
+| `npm run mcp:stdio` | Servidor MCP stdio para Cursor u otro cliente. |
+| `npm run docs:dev` | Docsify en `http://localhost:3001`. |
+| `npm run generate:departments` | Regenera SVGs de departamentos → `public/departments/`. |
 
 ---
 
-## API REST (resumen)
+## Estructura del repositorio
 
-- **Documentación en la app:** [https://q-threats.vercel.app/api-reference](https://q-threats.vercel.app/api-reference) (o `/api-reference` en local).
-- **Preflight / CORS:** rutas bajo `/api/*` exponen cabeceras permisivas y responden **OPTIONS** (`middleware.ts`).
-- **Patrones de respuesta:** suele ser `{ data: ... }`, `{ error: string }`, o cuerpos específicos (`/api/mcp/context-pack` → `{ text }`, `/api/chat` → `{ reply }`).
-
-| Método | Ruta | Rol breve |
-|--------|------|-----------|
-| GET | `/api/threats` | Amenazas; query `q`, `level`, `limit`. |
-| GET | `/api/nodes` | Nodos; query opcional `ids`. |
-| GET | `/api/departments` | Departamentos (Guatemala). |
-| GET | `/api/analysis/[threatId]` | Análisis demo por amenaza. |
-| GET | `/api/legislation/[id]` | Análisis por iniciativa (Make). |
-| GET | `/api/recent-reports` | Reportes recientes (Supabase). |
-| GET | `/api/graph` | **Solo Neo4j**; sin env → **503**. `?check=1` diagnostica configuración. |
-| GET | `/api/mcp/graph-snapshot` | Grafo para integraciones: Neo4j en servidor **o** fallback demo. |
-| GET | `/api/mcp/context-pack` | Texto para contexto de modelos. |
-| POST | `/api/chat` | Chat MiniMax; cuerpo `{ messages: [{ role, content }] }`. |
-
----
-
-## MCP (Model Context Protocol)
-
-El proceso `npm run mcp:stdio` ejecuta `mcp/server.ts`: herramientas que **solo** llaman al backend por HTTP (sin credenciales Neo4j en el cliente MCP). Configura **`Q_THREATS_BACKEND_URL`** apuntando al deploy o a `http://127.0.0.1:3000`. Instrucciones en la ruta **`/mcp`** de la app.
-
----
-
-## Estructura útil del repositorio
-
-```text
-app/                  # Páginas: /, /relations, /chat, /api-reference, /mcp (/docs → redirección externa)
-app/api/              # Route Handlers REST
-components/           # UI (HomePage, RelationsForceGraph, AnalysisNetworkView, nav…)
+```
+app/
+  api/              # Route Handlers REST (threats, graph, chat, mcp, legislation…)
+  chat/             # Ruta /chat (chatbot)
+  relations/        # Ruta /relations (grafo 2D Neo4j)
+  api-reference/    # Documentación interactiva de la API
+  mcp/              # Instrucciones de integración MCP
+  page.tsx          # Home: mapa de Guatemala + amenazas
+components/         # UI (HomePage, RelationsForceGraph, canvases 3D…)
 lib/
-  data.ts             # Demo: amenazas y análisis
-  types.ts            # Contratos TypeScript
-  neo4j/              # Cliente y fetch del grafo
-  make/               # Integración webhook Make → ThreatAnalysis
-  supabase/           # Cliente servidor para reportes
-  chat/               # Paquete de contexto para el chat
-  mcp/                # Snapshot de grafo compartido con API MCP
-mcp/server.ts         # Servidor MCP stdio (desarrollo / Cursor)
-middleware.ts         # CORS para /api/*
-docs/                 # Docsify (index.html, *.md) — npm run docs:dev
-public/               # Activos estáticos (departamentos SVG, logos)
-scripts/              # Utilidades (p. ej. generate-department-paths.mjs)
+  types.ts          # Contratos TypeScript (Threat, ThreatAnalysis, AnalysisNode…)
+  data.ts           # Datos de demostración
+  neo4j/            # Driver y queries hacia Neo4j
+  make/             # Integración webhook Make → ThreatAnalysis
+  supabase/         # Cliente servidor para law_risk_reports
+  chat/             # buildChatContextPack (contexto para el LLM)
+  mcp/              # loadThreatAnalysisSnapshot, threatSearch
+mcp/
+  server.ts         # Servidor MCP stdio
+middleware.ts       # CORS para /api/*
+docs/               # Documentación Docsify
+public/
+  departments/      # SVGs de los 22 departamentos de Guatemala
+DESIGN.md           # Tokens de diseño (colores, tipografía, espaciado)
+AGENTS.md           # Guía para agentes de IA y contribuidores
 ```
 
-Diseño UI: **`DESIGN.md`**. Guía para contribuir / convenciones: **`AGENTS.md`**.
+---
+
+## Fuentes de datos
+
+- Diario de Centroamérica
+- Páginas oficiales de organismos del Estado guatemalteco
+- Registro de compras públicas (Guatecompras)
+- Registro de empresas
+- Partidos políticos
+- Medios de comunicación verificados
+
+> Q Threats **no almacena información de los usuarios** que utilizan la plataforma. Solo procesa y expone datos de personas políticamente expuestas y entidades gubernamentales, con base exclusivamente en fuentes públicas oficiales. Cada dato incluye enlace a su fuente original.
 
 ---
 
-## Datos, metodología y limitaciones
+## Para quién
 
-- **Demo (`lib/data.ts`):** permite probar UX y flujos sin infraestructura; no sustituye auditoría sobre datos reales.
-- **Neo4j / Make / Supabase:** cuando están configurados, la app refleja **tu** pipeline y políticas de calidad de datos; documenta en el hackathon qué fuentes alimentan Make y el grafo.
-- **Chat:** el modelo recibe un contexto acotado; las respuestas son **asistencia** basada en ese contexto, no conclusiones judiciales ni investigación cerrada.
+| Perfil | Canal de acceso |
+|--------|-----------------|
+| **Ciudadanos** | Chatbot en `/chat` — preguntas en lenguaje natural sobre el poder político |
+| **Periodistas e investigadores** | API REST + MCP + vista `/relations` para investigación profunda |
+| **Desarrolladores y organizaciones** | Integración vía API abierta o servidor MCP local |
 
----
-
-## Demo y presentación (hackathon)
-
-- **Deploy:** [https://q-threats.vercel.app](https://q-threats.vercel.app)
-- **Video demo (2–3 min):** _(completar URL)_
-- **Slides / Figma:** _(completar URL)_
-
-**Guión sugerido:** inicio (mapa + amenazas) → análisis 3D → búsqueda o deep link de iniciativa → `/relations` (Neo4j) con vecinos → `/chat` opcional → mencionar **API** y **open source**.
+> El proyecto cuenta con una carta de declaración de intenciones de un directivo de un medio de comunicación guatemalteco que manifiesta interés formal en adoptarlo como herramienta de investigación.
 
 ---
 
-## Próximos pasos (ideas)
+## Escalabilidad
 
-- Más fuentes públicas verificables enlazadas a nodos y aristas.
-- Roles (periodista / auditoría) y exportación de subgrafos o reportes.
-- Pruebas automatizadas sobre mapeos Make → `ThreatAnalysis`.
+La arquitectura está diseñada para:
+- Escalar a nuevos ministerios y organismos del Estado.
+- Adaptarse a otros países con estructuras de datos similares.
+- Incorporar nuevas fuentes: declaraciones patrimoniales, auditorías de la CGC, etc.
+- Integrarse con nuevos modelos de lenguaje (el chat es agnóstico al proveedor).
 
 ---
 
 ## Licencia
 
-Este proyecto se distribuye bajo la **GNU Affero General Public License v3.0**. Ver el archivo [`LICENSE`](LICENSE).
-
-Si modificas el código y **pones en red** un servicio que use esa versión, AGPL exige que los usuarios de la red puedan obtener el **código fuente** correspondiente. Para detalle legal, lee el texto completo de la licencia.
+**GNU Affero General Public License v3.0.** Si modificas el código y pones en red un servicio que use esta versión, AGPL exige que los usuarios puedan obtener el código fuente correspondiente. Ver [`LICENSE`](LICENSE).
 
 ---
 
 ## Créditos
 
-- **Hackathon / evento:** _(completar nombre del evento)_  
-- **Equipo:** _(completar nombres o enlaces)_  
+- **Equipo:** _(completar nombres o enlaces)_
+- **Evento:** _(completar nombre del hackathon)_
+- **Aplicación:** [https://q-threats.vercel.app](https://q-threats.vercel.app)
+- **Repositorio:** [https://github.com/GEnriqueGT/q-threats](https://github.com/GEnriqueGT/q-threats)
+- **Documentación:** [https://genriquegt.github.io/q-threats/#/](https://genriquegt.github.io/q-threats/#/)
+- **Video demo:** [https://youtu.be/ROHDlXTwD_I](https://youtu.be/ROHDlXTwD_I)
+- **Pitch:** [https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o](https://sparrow-geyser-521.faces.site/6ukoe6yx9l4o)
+
+---
+
+*La información es un derecho. La corrupción prospera en la oscuridad.*
