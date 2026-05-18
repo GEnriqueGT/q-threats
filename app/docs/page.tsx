@@ -38,13 +38,24 @@ export default function DocsPage() {
                 Mapas desde TopoJSON (SVG departamentos):{' '}
                 <code className="rounded bg-black/35 px-1.5 py-0.5">npm run generate:departments</code>
               </li>
+              <li>
+                Documentación estática con Docsify:{' '}
+                <code className="rounded bg-black/35 px-1.5 py-0.5">npm run docs:dev</code> (carpeta{' '}
+                <code className="rounded bg-black/35 px-1.5 py-0.5">docs/</code>, puerto 3001)
+              </li>
             </ul>
           </section>
 
           <section className="glass rounded-2xl p-6 md:p-8">
             <h2 className="text-xl font-semibold text-white mb-4">API (Route Handlers)</h2>
-            <p className="text-white/65 text-sm mb-6 leading-relaxed">
-              Datos desde <code className="rounded bg-black/35 px-1.5 py-0.5">lib/data.ts</code> y modulos relacionados.{' '}
+            <p className="text-white/65 text-sm mb-4 leading-relaxed">
+              <Link
+                href="/api-reference"
+                className="font-medium text-teal-300 underline-offset-2 hover:underline"
+              >
+                Guía API (URL base, CORS, curl y tabla completa)
+              </Link>
+              . Resumen: datos desde <code className="rounded bg-black/35 px-1.5 py-0.5">lib/data.ts</code> y modulos relacionados.{' '}
               <code className="rounded bg-black/35 px-1.5 py-0.5">GET /api/graph</code> es solo Neo4j (503 si no hay env). Para MCP y
               clientes que necesiten grafo sin Neo4j en servidor, usar{' '}
               <code className="rounded bg-black/35 px-1.5 py-0.5">GET /api/mcp/graph-snapshot</code> (Neo4j o fallback demo).
@@ -63,9 +74,12 @@ export default function DocsPage() {
                     ['GET /api/nodes ?ids=', 'Detalle de nodos para la red'],
                     ['GET /api/departments', 'Lista de departamentos (Guatemala)'],
                     ['GET /api/analysis/[threatId]', 'Detalle por amenaza'],
+                    ['GET /api/legislation/[id]', 'Análisis por iniciativa (Make)'],
+                    ['GET /api/recent-reports', 'Reportes recientes (Supabase; requiere env)'],
                     ['GET /api/graph', 'Grafo Neo4j completo (requiere env; sin fallback)'],
                     ['GET /api/mcp/graph-snapshot', 'Grafo para MCP: Neo4j en servidor o fallback demo'],
                     ['GET /api/mcp/context-pack', 'Texto de contexto del chat (amenazas + grafo)'],
+                    ['POST /api/chat', 'Chat (MiniMax en servidor; body messages[])'],
                   ].map(([path, desc]) => (
                     <tr key={path} className="border-b border-white/5">
                       <td className="px-4 py-3 font-mono text-xs whitespace-nowrap text-teal-200/90">{path}</td>
@@ -86,6 +100,13 @@ export default function DocsPage() {
               <li>
                 <span className="font-semibold text-white">Relations</span>: grafos combinados mediante el endpoint oficial
                 de grafo provisional.
+              </li>
+              <li>
+                <span className="font-semibold text-white">API</span>: referencia HTTP para integraciones (
+                <Link href="/api-reference" className="text-teal-300 underline-offset-2 hover:underline">
+                  /api-reference
+                </Link>
+                ).
               </li>
               <li>
                 <span className="font-semibold text-white">Docs</span>: sintesis operativa visible en navegadores (esta misma vista).

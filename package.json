@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "mcp:stdio": "tsx mcp/server.ts",
+    "docs:dev": "docsify serve docs --port 3001",
     "generate:departments": "node scripts/generate-department-paths.mjs"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "d3-geo": "^3.1.1",
+    "docsify-cli": "^4.4.4",
     "dotenv": "^17.4.2",
     "tailwindcss": "^4.1.14",
     "topojson-client": "^3.1.0",

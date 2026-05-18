@@ -22,7 +22,7 @@ npm install          # dependencias
 npm run dev          # http://localhost:3000
 npm run build        # producción
 npm run lint         # TypeScript
-npm run generate:departments   # regenera paths desde TopoJSON → SVGs en public/departments/
+npm run docs:dev   # Docsify: carpeta docs/, http://localhost:3001
 ```
 
 ## Estructura de carpetas (referencia rápida)
@@ -32,6 +32,7 @@ npm run generate:departments   # regenera paths desde TopoJSON → SVGs en publi
 | `app/` | Rutas, `layout.tsx`, estilos globales, API bajo `app/api/` |
 | `components/` | Componentes React (mapa, modales, canvases 3D/red) |
 | `lib/` | Datos (`data.ts`), tipos (`types.ts`), utilidades de geometría/red/neural |
+| `docs/` | Documentación estática **Docsify** (`npm run docs:dev`) |
 | `public/departments/` | SVG por departamento (Guatemala) |
 | `public/logos/` | Logos locales (ej. `inacif.svg`) |
 | `scripts/` | Utilidades Node (`generate-department-paths.mjs`, scripts gist) |

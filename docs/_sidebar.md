@@ -1,0 +1,8 @@
+* [Inicio](README.md)
+* [Producto](producto.md)
+* [Arquitectura](arquitectura.md)
+* [Desarrollo](desarrollo.md)
+* [Variables de entorno](variables-de-entorno.md)
+* [API REST](api.md)
+* [MCP](mcp-integracion.md)
+* [Licencia](licencia.md)

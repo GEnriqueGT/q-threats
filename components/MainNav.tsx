@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const ITEMS = [
   { href: '/', label: 'Threats', match: (p: string) => p === '/' },
   { href: '/relations', label: 'Relations', match: (p: string) => p.startsWith('/relations') },
+  { href: '/api-reference', label: 'API', match: (p: string) => p.startsWith('/api-reference') },
   { href: '/chat', label: 'Chat', match: (p: string) => p.startsWith('/chat') },
   { href: '/mcp', label: 'MCP', match: (p: string) => p.startsWith('/mcp') },
   { href: '/docs', label: 'Docs', match: (p: string) => p.startsWith('/docs') },
