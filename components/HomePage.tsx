@@ -14,6 +14,11 @@ import {
   buildAnalysisShareUrl,
   parseAnalysisUrlParams,
 } from '@/lib/analysisUrl';
+import {
+  consumeLegislationSearch,
+  legislationSearchKey,
+  markLegislationSearchHandled,
+} from '@/lib/legislationSearchGuard';
 import type { Threat, ThreatAnalysis } from '@/lib/types';
 
 type ViewState = 'dashboard' | 'analysis';
@@ -30,7 +35,8 @@ export function HomePage() {
   const searchParams = useSearchParams();
   const mainRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
-  const deepLinkHandled = useRef(false);
+  const skipUrlDeepLinkRef = useRef(false);
+  const legislationRequestId = useRef(0);
 
   const [sphereFocus, setSphereFocus] = useState<{ x: number; y: number } | null>(null);
   const [view, setView] = useState<ViewState>('dashboard');
@@ -122,12 +128,16 @@ export function HomePage() {
 
   const openAnalysis = useCallback(
     async (threatId: string, options?: { skipUrl?: boolean }) => {
+      if (!options?.skipUrl) {
+        markLegislationSearchHandled(legislationSearchKey('amenaza', threatId));
+        skipUrlDeepLinkRef.current = true;
+        syncAnalysisUrl({ type: 'amenaza', id: threatId });
+      }
       setLegislationSearchError(null);
       setView('analysis');
       setAnalysis(null);
       setShareUrl(null);
       setAnalysisLoading(true);
-      if (!options?.skipUrl) syncAnalysisUrl({ type: 'amenaza', id: threatId });
       try {
         const data = await fetchJson<ThreatAnalysis>(`/api/analysis/${threatId}`);
         setAnalysis(data);
@@ -143,17 +153,27 @@ export function HomePage() {
 
   const searchLegislation = useCallback(
     async (referenceId: string, options?: { skipUrl?: boolean }) => {
+      const trimmed = referenceId.trim();
+      if (!trimmed) return;
+
+      if (!options?.skipUrl) {
+        markLegislationSearchHandled(legislationSearchKey('iniciativa', trimmed));
+        skipUrlDeepLinkRef.current = true;
+        syncAnalysisUrl({ type: 'iniciativa', id: trimmed });
+      }
+
+      const requestId = ++legislationRequestId.current;
       setLegislationSearchError(null);
       setView('analysis');
       setAnalysis(null);
       setShareUrl(null);
       setLegislationSearchLoading(true);
       setAnalysisLoading(true);
-      if (!options?.skipUrl) syncAnalysisUrl({ type: 'iniciativa', id: referenceId });
       try {
-        const encoded = encodeURIComponent(referenceId);
+        const encoded = encodeURIComponent(trimmed);
         const res = await fetch(`/api/legislation/${encoded}`);
         const json = (await res.json()) as { data?: ThreatAnalysis; error?: string };
+        if (requestId !== legislationRequestId.current) return;
         if (!res.ok || !json.data) {
           setLegislationSearchError(json.error ?? 'No se pudo cargar el análisis.');
           setView('dashboard');
@@ -163,13 +183,16 @@ export function HomePage() {
         setAnalysis(json.data);
         setShareUrl(buildAnalysisShareUrl(analysisUrlFromThreatAnalysis(json.data)));
       } catch (err) {
+        if (requestId !== legislationRequestId.current) return;
         console.error(err);
         setLegislationSearchError('Error de conexión al buscar la iniciativa.');
         setView('dashboard');
         syncAnalysisUrl(null);
       } finally {
-        setLegislationSearchLoading(false);
-        setAnalysisLoading(false);
+        if (requestId === legislationRequestId.current) {
+          setLegislationSearchLoading(false);
+          setAnalysisLoading(false);
+        }
       }
     },
     [syncAnalysisUrl],
@@ -198,10 +221,19 @@ export function HomePage() {
   }, [syncAnalysisUrl]);
 
   useEffect(() => {
-    if (deepLinkHandled.current) return;
+    if (skipUrlDeepLinkRef.current) {
+      skipUrlDeepLinkRef.current = false;
+      return;
+    }
     const parsed = parseAnalysisUrlParams(searchParams);
     if (!parsed) return;
-    deepLinkHandled.current = true;
+
+    const key = legislationSearchKey(
+      parsed.type === 'iniciativa' ? 'iniciativa' : 'amenaza',
+      parsed.id,
+    );
+    if (!consumeLegislationSearch(key)) return;
+
     if (parsed.type === 'iniciativa') {
       searchLegislation(parsed.id, { skipUrl: true });
     } else {
