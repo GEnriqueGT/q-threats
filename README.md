@@ -61,7 +61,7 @@ Un flujo en **Make** puede actuar como intermediario: webhooks, transformación 
 | **`/relations`** | Grafo 2D interactivo desde **`GET /api/graph`** (**solo Neo4j**). Sin credenciales, error `503`. Búsqueda, expansión a vecinos, panel de nodo, accesibilidad por teclado. |
 | **`/chat`** | Asistente: el servidor inyecta contexto desde `buildChatContextPack` (Neo4j si está configurado y responde; si no, **snapshot demo**). Requiere **MiniMax** en el servidor para respuestas reales. |
 | **`/api-reference`** | Guía HTTP: URL base, **CORS**, tabla de endpoints, ejemplos `curl`. |
-| **`/docs`** | Guía técnica corta y enlaces útiles. |
+| **`/docs`** | Redirección a la [documentación Docsify (GitHub Pages)](https://genriquegt.github.io/q-threats/#/). |
 | **`/mcp`** | Cómo conectar **Cursor** (u otro cliente) al servidor MCP **stdio** que llama al backend por HTTP. |
 
 ### Deep links (compartir análisis)
@@ -210,7 +210,7 @@ El proceso `npm run mcp:stdio` ejecuta `mcp/server.ts`: herramientas que **solo*
 ## Estructura útil del repositorio
 
 ```text
-app/                  # Páginas: /, /relations, /chat, /docs, /api-reference, /mcp
+app/                  # Páginas: /, /relations, /chat, /api-reference, /mcp (/docs → redirección externa)
 app/api/              # Route Handlers REST
 components/           # UI (HomePage, RelationsForceGraph, AnalysisNetworkView, nav…)
 lib/

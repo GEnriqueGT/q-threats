@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
+import { DOCS_SITE_URL } from '@/lib/docsSiteUrl';
+
 type Msg = { role: 'user' | 'assistant'; content: string };
 
 export default function ChatPage() {
@@ -132,9 +134,14 @@ export default function ChatPage() {
             </div>
             <p className="mt-3 text-center text-xs text-white/45">
               Enter envía · Shift+Enter nueva línea ·{' '}
-              <Link href="/docs" className="text-teal-300/90 underline-offset-2 hover:underline">
+              <a
+                href={DOCS_SITE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-teal-300/90 underline-offset-2 hover:underline"
+              >
                 Docs
-              </Link>
+              </a>
             </p>
           </div>
         </div>

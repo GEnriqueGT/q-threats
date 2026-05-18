@@ -6,7 +6,7 @@
 | **`/relations`** | Grafo 2D desde `GET /api/graph` (**solo Neo4j**). Sin credenciales → `503`. Búsqueda, vecinos, panel. |
 | **`/chat`** | Asistente con contexto del servidor; requiere **MiniMax** (`MINIMAX_API_KEY`). |
 | **`/api-reference`** | Guía HTTP, CORS, ejemplos `curl`. |
-| **`/docs`** | Guía técnica corta dentro de la app Next. |
+| **`/docs`** | Redirección a [Docsify en GitHub Pages](https://genriquegt.github.io/q-threats/#/). |
 | **`/mcp`** | Instrucciones para cliente MCP + `npm run mcp:stdio`. |
 
 ## Deep links (compartir)

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { DOCS_SITE_URL } from '@/lib/docsSiteUrl';
+
 export const metadata = {
   title: 'API HTTP — Q Threats',
   description: 'Base URL, CORS y rutas JSON para integrar Q Threats desde curl, scripts o apps.',
@@ -126,12 +128,14 @@ export default function ApiReferencePage() {
           </section>
 
           <section className="liquid-glass-card flex flex-wrap gap-3 p-6 md:p-8">
-            <Link
-              href="/docs"
+            <a
+              href={DOCS_SITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex rounded-full border border-white/20 px-5 py-2 text-sm font-medium text-white/90 transition hover:bg-white/10"
             >
               Guía técnica (Docs)
-            </Link>
+            </a>
             <Link
               href="/mcp"
               className="inline-flex rounded-full border border-teal-400/40 px-5 py-2 text-sm font-medium text-teal-100 transition hover:bg-teal-500/15"

@@ -22,7 +22,8 @@ npm install          # dependencias
 npm run dev          # http://localhost:3000
 npm run build        # producción
 npm run lint         # TypeScript
-npm run docs:dev   # Docsify: carpeta docs/, http://localhost:3001
+npm run docs:dev     # Docsify: carpeta docs/, http://localhost:3001
+npm run generate:departments  # regenera paths → SVGs en public/departments/
 ```
 
 ## Estructura de carpetas (referencia rápida)

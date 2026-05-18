@@ -1,10 +1,12 @@
 import Link from 'next/link';
 
+import { DOCS_SITE_URL } from '@/lib/docsSiteUrl';
+
 const LINKS = [
-  { href: '/', label: 'Threats' },
-  { href: '/relations', label: 'Relations' },
-  { href: '/api-reference', label: 'API' },
-  { href: '/docs', label: 'Docs' },
+  { href: '/', label: 'Threats', external: false as const },
+  { href: '/relations', label: 'Relations', external: false as const },
+  { href: '/api-reference', label: 'API', external: false as const },
+  { href: DOCS_SITE_URL, label: 'Docs', external: true as const },
 ] as const;
 
 export function MainFooter() {
@@ -20,15 +22,27 @@ export function MainFooter() {
           © {year} Q Threats · Amenazas a la vista pública
         </p>
         <nav aria-label="Pie — enlaces" className="flex flex-wrap justify-center gap-4 md:gap-6">
-          {LINKS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="text-xs font-medium text-white/70 transition hover:text-teal-300/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0c] md:text-sm"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {LINKS.map((item) =>
+            item.external ? (
+              <a
+                key={item.label}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-white/70 transition hover:text-teal-300/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0c] md:text-sm"
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-xs font-medium text-white/70 transition hover:text-teal-300/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0c] md:text-sm"
+              >
+                {item.label}
+              </Link>
+            ),
+          )}
         </nav>
       </div>
     </footer>

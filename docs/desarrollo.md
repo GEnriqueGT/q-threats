@@ -37,7 +37,7 @@ Sirve la carpeta `docs/` (este sitio). No compite con Next salvo por el puerto: 
 ## Estructura del monorepo (resumen)
 
 ```text
-app/              # Rutas Next (/, /relations, /chat, /docs, /api-reference, /mcp)
+app/              # Rutas Next (/, /relations, /chat, /api-reference, /mcp; /docs redirige fuera)
 app/api/          # REST
 components/       # UI
 lib/              # Datos demo, Neo4j, Make, Supabase, chat, tipos

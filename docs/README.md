@@ -14,7 +14,7 @@ Abre el puerto indicado en consola (por defecto **3001**; Next usa **3000**).
 |---------|-----|
 | Aplicación | [q-threats.vercel.app](https://q-threats.vercel.app) |
 | Referencia API (UI) | [/api-reference](https://q-threats.vercel.app/api-reference) |
-| Docs en la app | [/docs](https://q-threats.vercel.app/docs) |
+| Documentación (Docsify) | [genriquegt.github.io/q-threats](https://genriquegt.github.io/q-threats/#/) |
 
 ## Qué es
 
