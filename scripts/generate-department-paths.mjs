@@ -91,4 +91,26 @@ export function getDepartmentSlug(name: string): string {
 `;
 
 fs.writeFileSync('lib/departmentManifest.ts', manifest);
+
+const countryProjection = geoMercator().fitExtent(EXTENT, collection);
+const countryPath = geoPath(countryProjection)(collection);
+if (countryPath) {
+  const countrySvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 ${SIZE} ${SIZE}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Guatemala">
+  <defs>
+    <clipPath id="c"><path d="${countryPath}"/></clipPath>
+    <pattern id="mesh" width="14" height="14" patternUnits="userSpaceOnUse">
+      <path d="M0 14 L14 0 M-2 2 L2 -2 M12 16 L16 12" stroke="rgba(255,255,255,0.2)" stroke-width="0.6" fill="none"/>
+    </pattern>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="${SIZE}" height="${SIZE}" fill="url(#mesh)"/>
+    <path d="${countryPath}" fill="rgba(180,200,195,0.35)"/>
+  </g>
+  <path d="${countryPath}" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>
+</svg>`;
+  fs.writeFileSync('public/guatemala-country.svg', countrySvg);
+}
+
 console.log('SVG generados:', Object.keys(slugs).length, '→ public/departments/');
+if (countryPath) console.log('País → public/guatemala-country.svg');

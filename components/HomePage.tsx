@@ -7,7 +7,6 @@ import { MapGuatemala } from './MapGuatemala';
 import { ThreatItem } from './ThreatItem';
 import { LegislationSearch } from './LegislationSearch';
 import { AnalysisNetworkView } from './AnalysisNetworkView';
-import { DepartmentModal } from './DepartmentModal';
 import { NeuralWorldCanvas } from './NeuralWorldCanvas';
 import { useNeuralIntro } from '@/hooks/useNeuralIntro';
 import {
@@ -21,8 +20,8 @@ type ViewState = 'dashboard' | 'analysis';
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Error al cargar ${url}`);
   const json = await res.json();
+  if (!res.ok) throw new Error(json.error ?? `Error al cargar ${url}`);
   return json.data as T;
 }
 
@@ -35,10 +34,8 @@ export function HomePage() {
 
   const [sphereFocus, setSphereFocus] = useState<{ x: number; y: number } | null>(null);
   const [view, setView] = useState<ViewState>('dashboard');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [department, setDepartment] = useState('Guatemala');
   const [threats, setThreats] = useState<Threat[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
+  const [reportsError, setReportsError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<ThreatAnalysis | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,13 +94,30 @@ export function HomePage() {
   }, [view, updateSphereFocus]);
 
   useEffect(() => {
-    Promise.all([fetchJson<Threat[]>('/api/threats'), fetchJson<string[]>('/api/departments')])
-      .then(([threatsData, departmentsData]) => {
-        setThreats(threatsData);
-        setDepartments(departmentsData);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    (async () => {
+      try {
+        const res = await fetch('/api/recent-reports');
+        const json = (await res.json()) as { data?: Threat[]; error?: string };
+        if (res.ok && json.data) {
+          setThreats(json.data);
+          setReportsError(null);
+          return;
+        }
+        if (res.status === 503) {
+          const fallback = await fetchJson<Threat[]>('/api/threats');
+          setThreats(fallback);
+          setReportsError(null);
+          return;
+        }
+        setReportsError(json.error ?? 'No se pudieron cargar las actividades.');
+        setThreats([]);
+      } catch (err) {
+        console.error(err);
+        setReportsError('Error al cargar actividades recientes.');
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const openAnalysis = useCallback(
@@ -161,6 +175,18 @@ export function HomePage() {
     [syncAnalysisUrl],
   );
 
+  const openThreatItem = useCallback(
+    (threat: Threat) => {
+      const ref = threat.iniciativaId ?? threat.decretoId;
+      if (ref) {
+        searchLegislation(ref);
+        return;
+      }
+      openAnalysis(threat.id);
+    },
+    [searchLegislation, openAnalysis],
+  );
+
   const backToDashboard = useCallback(() => {
     setView('dashboard');
     setAnalysis(null);
@@ -208,11 +234,7 @@ export function HomePage() {
               className="w-full max-w-[90rem] mx-auto flex items-stretch justify-between gap-8 lg:gap-12 pointer-events-none min-h-[calc(100vh-9rem)]"
             >
               <motion.div className="flex-1 flex justify-center items-center min-h-0 pointer-events-auto py-4">
-                <MapGuatemala
-                  department={department}
-                  mapStageRef={mapStageRef}
-                  onClick={() => setIsModalOpen(true)}
-                />
+                <MapGuatemala mapStageRef={mapStageRef} />
               </motion.div>
 
               <motion.div
@@ -232,14 +254,18 @@ export function HomePage() {
                     Ultimas actividades sospechosas
                   </h3>
                   {loading ? (
-                    <p className="text-white/60">Cargando amenazas...</p>
+                    <p className="text-white/60">Cargando actividades...</p>
+                  ) : reportsError ? (
+                    <p className="text-amber-400/90 text-sm">{reportsError}</p>
+                  ) : threats.length === 0 ? (
+                    <p className="text-white/50 text-sm">No hay reportes recientes.</p>
                   ) : (
                     <div className="flex flex-col gap-6">
                       {threats.map((threat) => (
                         <ThreatItem
                           key={threat.id}
                           threat={threat}
-                          onClick={() => openAnalysis(threat.id)}
+                          onClick={() => openThreatItem(threat)}
                         />
                       ))}
                     </div>
@@ -276,12 +302,6 @@ export function HomePage() {
         </AnimatePresence>
       </main>
 
-      <DepartmentModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSelect={setDepartment}
-        departments={departments}
-      />
     </div>
   );
 }

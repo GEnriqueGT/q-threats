@@ -7,6 +7,9 @@ export interface Threat {
   amount: string;
   level: ThreatLevel;
   date: string;
+  /** Referencia legislativa (Supabase law_risk_reports). */
+  iniciativaId?: string;
+  decretoId?: string;
 }
 
 export interface ThreatSource {
